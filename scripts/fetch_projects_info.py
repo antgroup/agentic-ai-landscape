@@ -22,7 +22,7 @@ import clickhouse_connect
 # ── Paths ──────────────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.dirname(SCRIPT_DIR)
-ENV_PATH = os.path.join(BASE, "notebooks", ".env")
+ENV_PATH = os.path.join(BASE, "scripts", ".env")
 INPUT_CSV = os.path.join(BASE, "data", "agentic-ai-projects.csv")
 OUTPUT_CSV = os.path.join(BASE, "data", "agentic-ai-projects.csv")
 OUTPUT_READMES = os.path.join(BASE, "data", "project_readmes.json")
@@ -45,10 +45,11 @@ if now.month == 12:
 else:
     participants_end = f"{now.year}-{now.month + 1:02d}-01"
 
-# OpenRank trend: last 12 months
+# OpenRank trend: last 12 completed months ending with latest OpenRank month
 trend_months = []
+latest_openrank_date = now.replace(day=1) - timedelta(days=1)
 for i in range(11, -1, -1):
-    month_date = (now.replace(day=1) - relativedelta(months=i))
+    month_date = latest_openrank_date.replace(day=1) - relativedelta(months=i)
     trend_months.append(month_date.strftime("%Y-%m"))
 
 print(f"Current date: {now.strftime('%Y-%m-%d')}")

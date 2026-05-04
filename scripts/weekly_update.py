@@ -6,17 +6,17 @@ Steps:
 1. Query ClickHouse for top 100 projects by star growth in past week
 2. Fetch project info (description, topics, readme)
 3. Filter for agentic AI projects not in existing CSV
-4. Generate recommendation report for manual confirmation
-5. After confirmation, update CSV and regenerate classification
+4. Generate one canonical weekly report with LLM trend insights
+5. Publish the full report to Yuque, create a review PR, then send DingTalk
+6. After the PR is merged, update CSV and regenerate classification
 
 Usage:
-    python weekly_update.py --check          # Just check for new projects
-    python weekly_update.py --confirm       # Confirm and update after review
-    python weekly_update.py --full          # Full pipeline (check + confirm)
+    python weekly_update.py --check          # Check new projects, generate reports, create PR
+    python weekly_update.py --post-merge     # Process merged PR checklist into CSV
+    python weekly_update.py --full           # Legacy: check and add all discovered projects
 """
 
 import os
-import sys
 import csv
 import json
 import time
@@ -24,11 +24,14 @@ import re
 import base64
 import argparse
 import subprocess
+import shlex
 import requests
 import hashlib
 import hmac
 import urllib.parse
+import shutil
 from datetime import datetime, timedelta
+from collections import Counter
 from dateutil.relativedelta import relativedelta
 from dotenv import load_dotenv
 import clickhouse_connect
@@ -40,6 +43,7 @@ ENV_PATH = os.path.join(BASE, "scripts", ".env")
 INPUT_CSV = os.path.join(BASE, "data", "agentic-ai-projects.csv")
 OUTPUT_CSV = os.path.join(BASE, "data", "agentic-ai-projects.csv")
 REPORT_FILE = os.path.join(BASE, "data", "weekly_report.md")
+REPORT_ARCHIVE_DIR = os.path.join(BASE, "reports", "weekly_reports_by_agents")
 
 # Target repo for PRs
 PR_TARGET_REPO = "antgroup/llm-oss-landscape"
@@ -50,6 +54,37 @@ load_dotenv(ENV_PATH)
 # Get from environment or use default
 DINGTALK_WEBHOOK = os.getenv("DINGTALK_WEBHOOK", "")
 DINGTALK_SECRET = os.getenv("DINGTALK_SECRET", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+OPENAI_TIMEOUT = int(os.getenv("OPENAI_TIMEOUT", "180"))
+LLM_REPORT_PROJECT_LIMIT = int(os.getenv("LLM_REPORT_PROJECT_LIMIT", "18"))
+ALLOW_LLM_FALLBACK = os.getenv("ALLOW_LLM_FALLBACK", "").strip().lower() in ("1", "true", "yes")
+YUQUE_BOOK_ID = os.getenv("YUQUE_BOOK_ID", "211551637").strip()
+YUQUE_API_TOKEN = os.getenv("YUQUE_API_TOKEN", "").strip()
+YUQUE_API_BASE = os.getenv("YUQUE_API_BASE", "https://www.yuque.com/api/v2").rstrip("/")
+YUQUE_PUBLISH_COMMAND = os.getenv("YUQUE_PUBLISH_COMMAND", "").strip()
+YUQUE_WEB_BASE = os.getenv("YUQUE_WEB_BASE", "https://yuque.antfin.com").rstrip("/")
+YUQUE_NAMESPACE = os.getenv("YUQUE_NAMESPACE", "").strip()
+YUQUE_PARENT_URL = os.getenv("YUQUE_PARENT_URL", "").strip()
+YUQUE_PARENT_SLUG = os.getenv("YUQUE_PARENT_SLUG", "").strip()
+YUQUE_PARENT_TITLE = os.getenv("YUQUE_PARENT_TITLE", "Agentic 每周推送").strip()
+YUQUE_PARENT_UUID = os.getenv("YUQUE_PARENT_UUID", "").strip()
+YUQUE_PARENT_NODE_UUID = os.getenv("YUQUE_PARENT_NODE_UUID", "").strip()
+YUQUE_DOC_PUBLIC = os.getenv("YUQUE_DOC_PUBLIC", "").strip()
+CLICKHOUSE_HOST = os.getenv("CLICKHOUSE_HOST", "").strip()
+DIRECT_NETWORK_HOSTS = [
+    CLICKHOUSE_HOST,
+    "api.github.com",
+]
+
+def host_from_url(url):
+    if not url:
+        return ""
+    try:
+        return urllib.parse.urlparse(url).hostname or ""
+    except Exception:
+        return ""
 
 # ── Colors ──────────────────────────────────────────────────────────────
 GREEN = "\033[92m"
@@ -60,12 +95,40 @@ BOLD = "\033[1m"
 RESET = "\033[0m"
 
 # ── ClickHouse ─────────────────────────────────────────────────────────
-ch_client = clickhouse_connect.get_client(
-    host=os.getenv("CLICKHOUSE_HOST"),
-    port=8123,
-    username=os.getenv("CLICKHOUSE_USER"),
-    password=os.getenv("CLICKHOUSE_PASSWORD"),
-)
+_ch_client = None
+
+def ensure_no_proxy(host):
+    """Add a host to no_proxy so internal SOCKS settings do not break direct HTTP clients."""
+    if not host:
+        return
+    additions = [host, "127.0.0.1", "localhost"]
+    for key in ("no_proxy", "NO_PROXY"):
+        existing = [item.strip() for item in os.getenv(key, "").split(",") if item.strip()]
+        changed = False
+        for item in additions:
+            if item not in existing:
+                existing.append(item)
+                changed = True
+        if changed:
+            os.environ[key] = ",".join(existing)
+
+def ensure_direct_network_hosts():
+    """Bypass inherited SOCKS proxy settings for hosts used by this pipeline."""
+    for host in DIRECT_NETWORK_HOSTS:
+        ensure_no_proxy(host)
+
+def get_ch_client():
+    """Create the ClickHouse client lazily so importing this module has no network side effects."""
+    global _ch_client
+    if _ch_client is None:
+        ensure_direct_network_hosts()
+        _ch_client = clickhouse_connect.get_client(
+            host=CLICKHOUSE_HOST,
+            port=8123,
+            username=os.getenv("CLICKHOUSE_USER"),
+            password=os.getenv("CLICKHOUSE_PASSWORD"),
+        )
+    return _ch_client
 
 # ── Dynamic date calculation ───────────────────────────────────────────
 now = datetime.now()
@@ -73,10 +136,11 @@ now = datetime.now()
 # OpenRank: latest month (previous month)
 openrank_latest_month = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
 
-# OpenRank trend: last 6 months
+# OpenRank trend: last 6 completed months ending with latest OpenRank month
 trend_months = []
+latest_openrank_date = now.replace(day=1) - timedelta(days=1)
 for i in range(5, -1, -1):
-    month_date = (now.replace(day=1) - relativedelta(months=i))
+    month_date = latest_openrank_date.replace(day=1) - relativedelta(months=i)
     trend_months.append(month_date.strftime("%Y-%m"))
 
 # Participants: current month
@@ -86,19 +150,22 @@ if now.month == 12:
 else:
     participants_end = f"{now.year}-{now.month + 1:02d}-01"
 
-print(f"Current date: {now.strftime('%Y-%m-%d')}")
-print(f"OpenRank latest month: {openrank_latest_month}")
-print(f"OpenRank trend months: {trend_months}")
-print(f"Participants month: {now.strftime('%Y-%m')}")
+def print_runtime_context():
+    """Print date and API context for CLI runs."""
+    print(f"Current date: {now.strftime('%Y-%m-%d')}")
+    print(f"OpenRank latest month: {openrank_latest_month}")
+    print(f"OpenRank trend months: {trend_months}")
+    print(f"Participants month: {now.strftime('%Y-%m')}")
+    if github_token:
+        print(f"{GREEN}GitHub API: authenticated (rate limit ~5000/hr){RESET}")
+    else:
+        print(f"{YELLOW}GitHub API: unauthenticated (rate limit 60/hr){RESET}")
 
 # ── GitHub API ─────────────────────────────────────────────────────────
 github_token = os.getenv("GITHUB_TOKEN", "").strip()
 gh_headers = {"Accept": "application/vnd.github.v3+json"}
 if github_token:
     gh_headers["Authorization"] = f"token {github_token}"
-    print(f"{GREEN}GitHub API: authenticated (rate limit ~5000/hr){RESET}")
-else:
-    print(f"{YELLOW}GitHub API: unauthenticated (rate limit 60/hr){RESET}")
 
 # ── ClickHouse batch queries ───────────────────────────────────────────
 def fetch_openrank_data(repo_names):
@@ -110,24 +177,15 @@ def fetch_openrank_data(repo_names):
         return ", ".join([f"'{name.replace(chr(39), chr(39)+chr(39))}'" for name in names])
 
     repo_placeholders = build_in_clause(repo_names)
-    openrank_data = {}
-
-    # Query latest month OpenRank
-    sql_latest = f"""
-        SELECT repo_name, openrank
-        FROM opensource.global_openrank
-        WHERE platform = 'GitHub'
-          AND repo_name IN ({repo_placeholders})
-          AND type = 'Repo'
-          AND created_at = '{openrank_latest_month}-01'
-    """
-    result = ch_client.query(sql_latest)
-    for row in result.result_rows:
-        name, score = row
-        openrank_data[name] = {
-            "latest": round(score, 2),
-            "trend": {}
+    openrank_data = {
+        name: {
+            "latest": "",
+            "latest_month": "",
+            "trend": {},
         }
+        for name in repo_names
+    }
+    ch_client = get_ch_client()
 
     # Query 6-month trend
     for month in trend_months:
@@ -143,7 +201,10 @@ def fetch_openrank_data(repo_names):
         for row in result.result_rows:
             name, score = row
             if name in openrank_data:
-                openrank_data[name]["trend"][month] = round(score, 2)
+                score = round(score, 2)
+                openrank_data[name]["trend"][month] = score
+                openrank_data[name]["latest"] = score
+                openrank_data[name]["latest_month"] = month
 
     return openrank_data
 
@@ -169,6 +230,7 @@ def fetch_participants_data(repo_names):
           AND created_at < '{participants_end}'
         GROUP BY repo_name
     """
+    ch_client = get_ch_client()
     result = ch_client.query(sql)
     for row in result.result_rows:
         name, count = row
@@ -209,18 +271,15 @@ def query_top_star_growth_projects(limit=100):
         LIMIT {limit}
     """
     
-    try:
-        result = ch_client.query(sql)
-        projects = [row[0] for row in result.result_rows]
-        print(f"Found {len(projects)} projects with star events in past week")
-        return projects
-    except Exception as e:
-        print(f"Error querying events table: {e}")
-        return []
+    result = get_ch_client().query(sql)
+    projects = [row[0] for row in result.result_rows]
+    print(f"Found {len(projects)} projects with star events in past week")
+    return projects
 
 # ── Fetch GitHub info ─────────────────────────────────────────────────
 def fetch_github_info(repo_name):
     """Fetch repo info from GitHub API."""
+    ensure_direct_network_hosts()
     url = f"https://api.github.com/repos/{repo_name}"
     try:
         resp = requests.get(url, headers=gh_headers, timeout=15)
@@ -239,11 +298,14 @@ def fetch_github_info(repo_name):
         else:
             print(f"  HTTP {resp.status_code} for {repo_name}")
     except Exception as e:
+        if "Missing dependencies for SOCKS support" in str(e):
+            raise
         print(f"  Error for {repo_name}: {e}")
     return None
 
 def fetch_github_readme(repo_name):
     """Fetch README content from GitHub API."""
+    ensure_direct_network_hosts()
     url = f"https://api.github.com/repos/{repo_name}/readme"
     try:
         resp = requests.get(url, headers=gh_headers, timeout=30)
@@ -251,8 +313,9 @@ def fetch_github_readme(repo_name):
             data = resp.json()
             content = base64.b64decode(data["content"]).decode("utf-8", errors="replace")
             return content[:50000]
-    except:
-        pass
+    except Exception as e:
+        if "Missing dependencies for SOCKS support" in str(e):
+            raise
     return ""
 
 # ── Filter agentic AI projects ────────────────────────────────────────
@@ -733,204 +796,326 @@ def generate_recommendations(new_projects, trend_months, top_n=None):
     # Sort by score descending
     scored.sort(key=lambda x: -x[1])
 
-    # Return top N (dynamic if top_n is None)
+    # Return top N when a report explicitly needs highlighted projects.
     if top_n:
         return scored[:top_n]
 
     # Dynamic: include all projects with score > 0.5
     return [(p, s, r) for p, s, r in scored if s > 0.5]
 
-# ── Generate recommendation report ─────────────────────────────────────
-def generate_report(new_projects, trend_months=None):
-    """Generate a markdown report for manual confirmation."""
-    if trend_months is None:
-        trend_months = []
-    
-    report = f"""# Weekly Agentic AI Projects Update
+# ── Canonical weekly report ────────────────────────────────────────────
+def format_stars(stars):
+    stars = int(stars or 0)
+    return f"{stars/1000:.1f}k" if stars >= 1000 else str(stars)
 
-**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+def format_openrank(project):
+    openrank = project.get("openrank_latest", "")
+    if isinstance(openrank, (int, float)):
+        return f"{openrank:.1f}"
+    return str(openrank) if openrank else "-"
 
-## Summary
+def format_openrank_month(project):
+    return project.get("openrank_month", "") or "-"
 
-Found **{len(new_projects)}** new agentic AI projects this week (not in existing list).
+def get_report_archive_path(date_str=None):
+    date_str = date_str or datetime.now().strftime("%Y-%m-%d")
+    os.makedirs(REPORT_ARCHIVE_DIR, exist_ok=True)
+    return os.path.join(REPORT_ARCHIVE_DIR, f"{date_str}-weekly-agentic-ai-report.md")
 
-## Projects to Review
+def get_project_categories(project):
+    categories = project.get("categories", [])
+    if isinstance(categories, str):
+        categories = [c.strip() for c in categories.split("|") if c.strip()]
+    if not categories:
+        categories = classify_project(project)
+    return categories or ["Other"]
 
-| # | Repo | Description | Topics | Stars | Created | OpenRank | 趋势 | 参与者 | 语言 |
-|---|------|-------------|--------|-------|---------|----------|------|--------|------|
-"""
-    
-    for i, p in enumerate(new_projects, 1):
-        desc = md_cell(p.get("description", ""), 50)
-        topics = md_cell(p.get("topics", ""), 40)
-        stars = p.get("stars", 0)
-        stars_str = f"{stars/1000:.1f}k" if stars >= 1000 else str(stars)
-        created = p.get("created_at", "-")[:7] if p.get("created_at") else "-"
-        openrank = p.get("openrank_latest", "")
-        openrank_str = f"{openrank:.1f}" if openrank else "-"
+def build_report_context(new_projects, trend_months, recommendations=None):
+    """Build structured context used by the canonical report and LLM prompt."""
+    recommendations = recommendations or []
+    category_counter = Counter()
+    for p in new_projects:
+        p["categories"] = get_project_categories(p)
+        for category in p["categories"]:
+            category_counter[category] += 1
+
+    growth_projects = []
+    for p in new_projects:
         trend = p.get("openrank_trend", {})
-        sparkline = generate_sparkline(trend, trend_months)
+        values = [trend.get(m) for m in trend_months if m in trend]
+        valid = [v for v in values if v is not None and v > 0]
+        if len(valid) >= 2:
+            growth = (valid[-1] - valid[0]) / (valid[0] + 1)
+            growth_projects.append({
+                "repo_name": p["repo_name"],
+                "growth": growth,
+                "from": valid[0],
+                "to": valid[-1],
+            })
+    growth_projects.sort(key=lambda item: -item["growth"])
+
+    highlighted = [
+        {"project": project, "score": score, "reason": reason}
+        for project, score, reason in recommendations[:10]
+    ]
+
+    return {
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "project_count": len(new_projects),
+        "projects": new_projects,
+        "trend_months": trend_months,
+        "category_counts": category_counter,
+        "highlighted": highlighted,
+        "fastest_growing": growth_projects[:5],
+    }
+
+def project_text_excerpt(project, max_len=500):
+    parts = [
+        project.get("description", ""),
+        project.get("topics", ""),
+        project.get("readme", ""),
+    ]
+    text = "\n".join(part for part in parts if part).strip()
+    text = re.sub(r"\s+", " ", text)
+    return text[:max_len]
+
+def summarize_trend(project, trend_months):
+    trend = project.get("openrank_trend", {})
+    values = [
+        {"month": month, "openrank": trend[month]}
+        for month in trend_months
+        if trend.get(month) is not None
+    ]
+    if len(values) >= 2:
+        first = values[0]["openrank"]
+        last = values[-1]["openrank"]
+        growth = (last - first) / (first + 1)
+    else:
+        growth = None
+    return {
+        "latest_month": project.get("openrank_month", ""),
+        "latest": project.get("openrank_latest", ""),
+        "series": values,
+        "growth": growth,
+    }
+
+def generate_fallback_trend_insights(context):
+    """Generate deterministic trend insight text when LLM generation is unavailable."""
+    lines = [
+        "> LLM trend analysis unavailable; generated from template fallback.",
+        "",
+    ]
+    top_categories = context["category_counts"].most_common(3)
+    if top_categories:
+        categories = "、".join(f"{cat}（{count} 个）" for cat, count in top_categories)
+        lines.append(f"**项目分布显示 Agentic AI 工程化工具链仍是主线。** 本周 {context['project_count']} 个候选项目中，{categories} 最为集中，说明开发者关注点继续围绕可落地的 agent 开发、编排和工具接入能力展开。")
+        lines.append("")
+
+    if context["fastest_growing"]:
+        top = context["fastest_growing"][0]
+        growth_pct = top["growth"] * 100
+        lines.append(f"**OpenRank 增长突出的项目值得优先 review。** {top['repo_name']} 的 OpenRank 从 {top['from']:.1f} 增至 {top['to']:.1f}，增长约 {growth_pct:.0f}%，体现出近期社区互动显著升温。")
+        lines.append("")
+
+    if context["highlighted"]:
+        names = "、".join(item["project"]["repo_name"] for item in context["highlighted"][:3])
+        lines.append(f"**精选项目可作为本周趋势案例。** {names} 在 OpenRank、参与者、star 或新项目信号上表现突出，适合在报告和后续人工 review 中优先关注。")
+        lines.append("")
+
+    return "\n".join(lines).strip()
+
+def build_llm_prompt(context):
+    """Create an evidence-rich prompt for the trend insight LLM call."""
+    top_by_stars = sorted(context["projects"], key=lambda p: p.get("stars", 0) or 0, reverse=True)[:10]
+    top_by_participants = sorted(context["projects"], key=lambda p: p.get("participants", 0) or 0, reverse=True)[:10]
+    projects_by_name = {p["repo_name"]: p for p in context["projects"]}
+    selected_names = []
+    for item in context["highlighted"]:
+        selected_names.append(item["project"]["repo_name"])
+    for item in context["fastest_growing"]:
+        selected_names.append(item["repo_name"])
+    selected_names.extend(p["repo_name"] for p in top_by_stars)
+    selected_names.extend(p["repo_name"] for p in top_by_participants)
+
+    seen = set()
+    selected_projects = []
+    for name in selected_names:
+        if name in seen or name not in projects_by_name:
+            continue
+        seen.add(name)
+        selected_projects.append(projects_by_name[name])
+        if len(selected_projects) >= LLM_REPORT_PROJECT_LIMIT:
+            break
+
+    payload = {
+        "date": context["date"],
+        "project_count": context["project_count"],
+        "category_counts": dict(context["category_counts"].most_common(12)),
+        "fastest_growing": context["fastest_growing"],
+        "top_by_stars": [p["repo_name"] for p in top_by_stars],
+        "top_by_participants": [p["repo_name"] for p in top_by_participants],
+        "projects": [
+            {
+                "repo_name": p["repo_name"],
+                "description": p.get("description", ""),
+                "topics": p.get("topics", ""),
+                "stars": p.get("stars", 0),
+                "language": p.get("language", ""),
+                "created_at": p.get("created_at", ""),
+                "participants": p.get("participants", 0),
+                "categories": p.get("categories", []),
+                "openrank": summarize_trend(p, context["trend_months"]),
+                "text_excerpt": project_text_excerpt(p),
+            }
+            for p in selected_projects
+        ],
+    }
+    return (
+        "你是开源 AI 生态分析师。请基于下面 JSON 数据生成一份中文深度趋势洞察，"
+        "重点不是罗列项目，而是从项目文本、分类分布、OpenRank 趋势、参与者和 star 信号中提炼结构性变化。"
+        f"本周共有 {context['project_count']} 个候选项目，JSON 中 projects 是用于深入分析的代表性项目样本。"
+        "要求：\n"
+        "1. 输出 4-6 个有观点的小节，每节使用 Markdown 三级标题；\n"
+        "2. 每节必须引用至少 2 个具体项目名，并尽量引用 OpenRank、参与者、star、创建时间等证据；\n"
+        "3. 明确区分真实工程项目、资源/skills/awesome 类项目、协议/工具链/应用层趋势；\n"
+        "4. 不要编造未提供的数据；缺失 OpenRank 时直接说明该项目缺少 OpenRank 信号，但可以结合项目文本和 GitHub 信号分析；\n"
+        "5. 不要输出候选清单或表格，避免重复 Review Candidates 表。\n\n"
+        f"```json\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```"
+    )
+
+def generate_llm_trend_insights(context):
+    """Generate deep trend insights using OpenAI Chat Completions with fallback."""
+    if not OPENAI_API_KEY:
+        if ALLOW_LLM_FALLBACK:
+            return generate_fallback_trend_insights(context), True
+        raise RuntimeError("OPENAI_API_KEY is required for weekly trend insights. Set ALLOW_LLM_FALLBACK=1 to allow template fallback.")
+
+    try:
+        ensure_no_proxy(host_from_url(OPENAI_BASE_URL))
+        resp = requests.post(
+            f"{OPENAI_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": OPENAI_MODEL,
+                "messages": [
+                    {"role": "system", "content": "You write concise, evidence-grounded open-source ecosystem analysis in Chinese."},
+                    {"role": "user", "content": build_llm_prompt(context)},
+                ],
+                "temperature": 0.4,
+            },
+            timeout=OPENAI_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"].strip()
+        if not content:
+            raise ValueError("empty LLM response")
+        return content, False
+    except Exception as e:
+        print(f"{YELLOW}LLM trend generation failed: {e}{RESET}")
+        if ALLOW_LLM_FALLBACK:
+            return generate_fallback_trend_insights(context), True
+        raise
+
+def generate_tldr(context):
+    lines = [
+        f"本周发现 **{context['project_count']}** 个新的 Agentic AI 候选项目。",
+    ]
+    if context["category_counts"]:
+        top_categories = ", ".join(f"{cat} ({count})" for cat, count in context["category_counts"].most_common(3))
+        lines.append(f"热门方向集中在：{top_categories}。")
+    if context["highlighted"]:
+        top = context["highlighted"][0]
+        lines.append(f"优先关注：{top['project']['repo_name']} - {top['reason']}。")
+    if context["fastest_growing"]:
+        fastest = context["fastest_growing"][0]
+        lines.append(f"OpenRank 增速最快：{fastest['repo_name']}，约 {fastest['growth']*100:.0f}% 增长。")
+    return lines
+
+def generate_review_candidates_table(projects, trend_months):
+    rows = [
+        "| # | Repo | Description | Topics | Stars | Created | Latest OpenRank | OpenRank Month | Trend | Participants | Language | Categories |",
+        "|---|------|-------------|--------|-------|---------|-----------------|----------------|-------|--------------|----------|------------|",
+    ]
+    for i, p in enumerate(projects, 1):
+        desc = md_cell(p.get("description", ""), 70)
+        topics = md_cell(p.get("topics", ""), 50)
+        created = p.get("created_at", "-")[:10] if p.get("created_at") else "-"
+        trend = generate_sparkline(p.get("openrank_trend", {}), trend_months)
         participants = p.get("participants", 0)
         lang = p.get("language", "-") or "-"
+        categories = md_cell(", ".join(get_project_categories(p)[:3]), 70)
+        rows.append(
+            f"| {i} | [{p['repo_name']}](https://github.com/{p['repo_name']}) | {desc} | {topics} | {format_stars(p.get('stars', 0))} | {created} | {format_openrank(p)} | {format_openrank_month(p)} | {trend} | {participants} | {lang} | {categories} |"
+        )
+    return "\n".join(rows)
 
-        report += f"| {i} | {p['repo_name']} | {desc} | {topics} | {stars_str} | {created} | {openrank_str} | {sparkline} | {participants} | {lang} |\n"
+def compose_canonical_report(context, trend_insights, fallback_used=False):
+    date_str = context["date"]
+    lines = [
+        f"# Agentic AI Weekly Report - {date_str}",
+        "",
+        "## TL;DR",
+        "",
+    ]
+    lines.extend(f"- {item}" for item in generate_tldr(context))
+    lines.extend(["", "## Deep Trend Insights", "", trend_insights, ""])
 
-    # Generate recommendations
-    if len(new_projects) >= 3:
-        recommendations = generate_recommendations(new_projects, trend_months)
+    if fallback_used:
+        lines.extend(["", "_Trend insights were generated by deterministic fallback because LLM generation was unavailable._", ""])
 
-        if recommendations:
-            report += """
-## 🌟 值得额外关注的项目
-
-基于 OpenRank 增速、社区活跃度、Star 数和创建时间的综合评估：
-
-| Repo | 推荐指数 | 推荐理由 |
-|------|---------|---------|
-"""
-            for p, score, reason in recommendations[:5]:  # Top 5
-                # Map score to stars rating
-                if score >= 0.8:
-                    rating = "⭐⭐⭐⭐⭐"
-                elif score >= 0.6:
-                    rating = "⭐⭐⭐⭐"
-                elif score >= 0.4:
-                    rating = "⭐⭐⭐"
-                else:
-                    rating = "⭐⭐"
-
-                report += f"| {p['repo_name']} | {rating} | {md_cell(reason, 80)} |\n"
-
-            # Add detailed analysis for top recommendation
-            if recommendations:
-                top_p, top_score, top_reason = recommendations[0]
-                trend_data = top_p.get("openrank_trend", {})
-                values = [trend_data.get(m, 0) for m in trend_months if m in trend_data]
-
-                if len(values) >= 2:
-                    or_growth = (values[-1] - values[0]) / (values[0] + 1) if values[0] > 0 else 0
-                    report += f"""
-**深度分析**：
-
-- **{top_p['repo_name']}**: OpenRank 从 {values[0]:.1f} 增长到 {values[-1]:.1f} ({or_growth*100:.0f}% 增长)，
-  最近一月 {top_p.get('participants', 0)} 位参与者，{top_p.get('stars', 0)} stars。{top_reason}。
-
-"""
-
-    report += f"""
-
-## Action Required
-
-Please review the projects above and confirm which ones to add.
-
-To confirm, run:
-```bash
-python scripts/weekly_update.py --confirm
-```
-
-To skip this week, simply close the PR without merging.
-
----
-*Generated by Numa 🐂*
-"""
-    
-    with open(REPORT_FILE, "w", encoding="utf-8") as f:
-        f.write(report)
-    
-    print(f"\n{REPORT_FILE}")
-    return report
-
-# ── Send DingTalk notification ─# ── Send DingTalk notification ────────────────────────────────────────
-def send_dingtalk(message, projects=None, recommendations=None, yuque_url=None):
-    """Send DingTalk message with webhook and signature."""
-    if not DINGTALK_WEBHOOK:
-        print(f"{YELLOW}No DingTalk webhook configured, skipping notification{RESET}")
-        return
-    if not projects:
-        return
-
-    # Build markdown message
-    md_msg = f"## 🐂 Weekly Agentic AI Projects Update\n\n"
-    md_msg += f"**Date:** {datetime.now().strftime('%Y-%m-%d')}\n\n"
-    md_msg += f"Found **{len(projects)}** new agentic AI projects this week.\n\n"
-
-    # Highlight recommended projects
-    if recommendations:
-        md_msg += "### 🌟 值得关注\n\n"
-        for p, score, reason in recommendations[:5]:
-            stars = p.get("stars", 0)
-            stars_str = f"{stars/1000:.1f}k" if stars >= 1000 else str(stars)
-            md_msg += f"- **{p['repo_name']}** ⭐{stars_str} — {reason}\n"
-        md_msg += "\n"
-
-    # Link to Yuque
-    if yuque_url:
-        md_msg += f"[📖 查看完整报告]({yuque_url})\n\n"
+    lines.extend([
+        "## Highlighted Projects",
+        "",
+    ])
+    if context["highlighted"]:
+        for i, item in enumerate(context["highlighted"][:10], 1):
+            p = item["project"]
+            lines.extend([
+                f"### {i}. [{p['repo_name']}](https://github.com/{p['repo_name']})",
+                "",
+                f"- Stars: {format_stars(p.get('stars', 0))}",
+                f"- Language: {p.get('language', '-') or '-'}",
+                f"- Latest OpenRank: {format_openrank(p)} ({format_openrank_month(p)})",
+                f"- OpenRank trend: {generate_sparkline(p.get('openrank_trend', {}), context['trend_months'])}",
+                f"- Participants: {p.get('participants', 0)}",
+                f"- Reason: {item['reason']}",
+                "",
+            ])
     else:
-        md_msg += "完整报告稍后发布\n\n"
-    
-    payload = {
-        "msgtype": "markdown",
-        "markdown": {
-            "title": "Weekly Agentic AI Update",
-            "text": md_msg
-        }
-    }
-    
-    # Generate signature if secret is provided
-    url = DINGTALK_WEBHOOK
-    if DINGTALK_SECRET:
-        timestamp = str(round(time.time() * 1000))
-        secret_enc = DINGTALK_SECRET.encode('utf-8')
-        string_to_sign = f'{timestamp}\n{DINGTALK_SECRET}'
-        string_to_sign_enc = string_to_sign.encode('utf-8')
-        hmac_code = hmac.new(secret_enc, string_to_sign_enc, digestmod=hashlib.sha256).digest()
-        sign = urllib.parse.quote_plus(base64.b64encode(hmac_code))
-        url = f"{DINGTALK_WEBHOOK}&timestamp={timestamp}&sign={sign}"
-    
-    try:
-        resp = requests.post(url, json=payload, timeout=10)
-        if resp.status_code == 200:
-            result = resp.json()
-            if result.get('errcode') == 0:
-                print(f"{GREEN}DingTalk notification sent!{RESET}")
-            else:
-                print(f"{RED}DingTalk error: {result.get('errmsg')}{RESET}")
-        else:
-            print(f"{RED}DingTalk HTTP error: {resp.status_code}{RESET}")
-    except Exception as e:
-        print(f"{RED}Failed to send DingTalk: {e}{RESET}")
+        lines.extend(["No highlighted projects met the recommendation threshold.", ""])
 
-# ── Reader-facing report for Yuque ─────────────────────────────────────
-def generate_reader_report(new_projects, trend_months, recommendations=None):
-    """Generate a reader-facing markdown report for Yuque (no Action Required)."""
-    date_str = datetime.now().strftime('%Y-%m-%d')
-    report = f"# Agentic 每周推送 {date_str}\n\n"
-    report += f"本周发现 **{len(new_projects)}** 个新的 Agentic AI 开源项目。\n\n"
+    lines.extend([
+        "## Review Candidates",
+        "",
+        generate_review_candidates_table(context["projects"], context["trend_months"]),
+        "",
+        "---",
+        "*Generated by weekly_update.py*",
+        "",
+    ])
+    return "\n".join(lines)
 
-    report += "## 📋 本周新项目\n\n"
-    report += "| 项目 | 描述 | Stars | 语言 |\n"
-    report += "|------|------|-------|------|\n"
-    for p in new_projects:
-        desc = md_cell(p.get("description", ""), 60)
-        stars = p.get("stars", 0)
-        stars_str = f"{stars/1000:.1f}k" if stars >= 1000 else str(stars)
-        lang = p.get("language", "-") or "-"
-        report += f"| [{p['repo_name']}](https://github.com/{p['repo_name']}) | {desc} | {stars_str} | {lang} |\n"
+def generate_canonical_report(new_projects, trend_months=None, recommendations=None, date_str=None):
+    """Generate, archive, and latest-copy the single weekly report source of truth."""
+    trend_months = trend_months or []
+    context = build_report_context(new_projects, trend_months, recommendations)
+    if date_str:
+        context["date"] = date_str
+    trend_insights, fallback_used = generate_llm_trend_insights(context)
+    report = compose_canonical_report(context, trend_insights, fallback_used=fallback_used)
 
-    if recommendations:
-        report += "\n## 🌟 值得关注\n\n"
-        for p, score, reason in recommendations[:5]:
-            stars = p.get("stars", 0)
-            stars_str = f"{stars/1000:.1f}k" if stars >= 1000 else str(stars)
-            report += f"**[{p['repo_name']}](https://github.com/{p['repo_name']})** ⭐{stars_str}\n\n"
-            report += f"- {reason}\n\n"
+    archive_path = get_report_archive_path(context["date"])
+    with open(archive_path, "w", encoding="utf-8") as f:
+        f.write(report)
+    shutil.copyfile(archive_path, REPORT_FILE)
 
-    # Placeholder for LLM-generated trend analysis
-    report += "## 🔥 趋势洞察\n\n"
-    report += "<!-- TREND_ANALYSIS_PLACEHOLDER -->\n"
-
-    return report
+    print(f"{CYAN}Weekly report archived to {archive_path}{RESET}")
+    print(f"{CYAN}Latest weekly report copied to {REPORT_FILE}{RESET}")
+    return report, archive_path, context
 
 # ── Trend context for LLM analysis ─────────────────────────────────────
 TREND_CONTEXT_FILE = os.path.join(BASE, "data", "trend_context.md")
@@ -1057,49 +1242,285 @@ def generate_trend_context(new_projects, trend_months, recommendations=None):
         f.write(ctx)
     print(f"{CYAN}Trend context saved to {TREND_CONTEXT_FILE}{RESET}")
 
-# ── Yuque publish ──────────────────────────────────────────────────────
-YUQUE_BOOK_ID = 211551637
-
-def publish_to_yuque(reader_report):
-    """Save reader-facing report for Yuque publishing. Returns file path."""
-    date_str = datetime.now().strftime('%Y-%m-%d')
+# ── Yuque / DingTalk / PR publishing ───────────────────────────────────
+def publish_to_yuque(report_markdown, date_str=None):
+    """Publish full canonical report to Yuque. Returns the document URL, or None on failure."""
+    date_str = date_str or datetime.now().strftime("%Y-%m-%d")
     title = f"Agentic 每周推送 {date_str}"
-    yuque_file = os.path.join(BASE, "data", "yuque_report.md")
-    with open(yuque_file, "w", encoding="utf-8") as f:
-        f.write(reader_report)
-    print(f"{CYAN}Yuque report saved to {yuque_file}{RESET}")
-    return yuque_file
+    slug = f"agentic-weekly-{date_str}"
+    payload = {
+        "book_id": YUQUE_BOOK_ID,
+        "namespace": YUQUE_NAMESPACE,
+        "parent_url": YUQUE_PARENT_URL,
+        "parent_slug": YUQUE_PARENT_SLUG,
+        "parent_title": YUQUE_PARENT_TITLE,
+        "parent_uuid": YUQUE_PARENT_UUID,
+        "parent_node_uuid": YUQUE_PARENT_NODE_UUID,
+        "public": YUQUE_DOC_PUBLIC,
+        "title": title,
+        "slug": slug,
+        "date": date_str,
+        "body": report_markdown,
+    }
+
+    if YUQUE_PUBLISH_COMMAND:
+        try:
+            result = subprocess.run(
+                shlex.split(YUQUE_PUBLISH_COMMAND),
+                input=json.dumps(payload, ensure_ascii=False),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            output = result.stdout.strip()
+            try:
+                data = json.loads(output)
+                url = data.get("url") or data.get("doc_url") or data.get("web_url")
+            except json.JSONDecodeError:
+                url = output
+            if url:
+                url = normalize_yuque_url(url)
+                print(f"{GREEN}Yuque published: {url}{RESET}")
+                return url
+        except Exception as e:
+            print(f"{RED}Yuque publish command failed: {e}{RESET}")
+            return None
+
+    if not YUQUE_API_TOKEN:
+        print(f"{YELLOW}No Yuque publisher configured; skipping Yuque publish{RESET}")
+        return None
+
+    try:
+        resp = requests.post(
+            f"{YUQUE_API_BASE}/repos/{YUQUE_BOOK_ID}/docs",
+            headers={
+                "X-Auth-Token": YUQUE_API_TOKEN,
+                "Content-Type": "application/json",
+            },
+            json={
+                "title": title,
+                "slug": slug,
+                "body": report_markdown,
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json().get("data", resp.json())
+        url = data.get("url") or data.get("web_url") or data.get("link")
+        if not url and data.get("slug"):
+            url = f"https://www.yuque.com/{YUQUE_BOOK_ID}/{data['slug']}"
+        url = normalize_yuque_url(url) if url else url
+        print(f"{GREEN}Yuque published: {url or title}{RESET}")
+        return url
+    except Exception as e:
+        print(f"{RED}Yuque publish failed: {e}{RESET}")
+        return None
+
+def normalize_yuque_url(url):
+    """Normalize Yuque MCP relative paths into clickable absolute URLs."""
+    if not url:
+        return url
+    if url.startswith("http://") or url.startswith("https://"):
+        return url
+    if url.startswith("/"):
+        return f"{YUQUE_WEB_BASE}{url}"
+    return url
+
+def extract_trend_opinions(report_markdown, max_sentences=3):
+    """Extract two to three concise trend sentences from the generated report."""
+    if not report_markdown:
+        return []
+    def tldr_fallback():
+        tldr = re.search(r"## TL;DR\n\n(.+?)(?:\n## |\Z)", report_markdown, re.S)
+        if not tldr:
+            return []
+        fallback = []
+        for line in tldr.group(1).splitlines():
+            line = line.strip()
+            if not line.startswith("- "):
+                continue
+            sentence = re.sub(r"\*\*([^*]+)\*\*", r"\1", line[2:]).strip()
+            if sentence:
+                fallback.append(sentence)
+            if len(fallback) >= max_sentences:
+                break
+        return fallback
+
+    match = re.search(r"## Deep Trend Insights\n\n(.+?)(?:\n## |\Z)", report_markdown, re.S)
+    if not match:
+        return tldr_fallback()
+    text = match.group(1)
+    text = re.sub(r"^### .*$", "", text, flags=re.MULTILINE)
+    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    sentences = re.split(r"(?<=[。！？])\s*", text)
+    opinions = []
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence or len(sentence) < 24:
+            continue
+        opinions.append(sentence)
+        if len(opinions) >= max_sentences:
+            break
+    if opinions:
+        return opinions
+
+    return tldr_fallback()
+
+def build_dingtalk_markdown(projects, recommendations, yuque_url, pr_url, date_str=None, report_markdown=None):
+    """Build concise DingTalk markdown. Requires Yuque and PR URLs."""
+    date_str = date_str or datetime.now().strftime("%Y-%m-%d")
+    trend_opinions = extract_trend_opinions(report_markdown)
+    lines = [
+        "## Agentic AI Weekly Update",
+        "",
+        f"**{date_str}** 本周发现 **{len(projects)}** 个候选项目。",
+        "",
+    ]
+    if trend_opinions:
+        lines.append("**趋势观点**")
+        for opinion in trend_opinions[:3]:
+            lines.append(f"- {opinion}")
+        lines.append("")
+    if recommendations:
+        lines.append("**值得关注的项目**")
+        for p, score, reason in recommendations[:5]:
+            lines.append(f"- **{p['repo_name']}** - {reason}")
+        lines.append("")
+    lines.extend([
+        f"[完整报告]({normalize_yuque_url(yuque_url)})",
+        "",
+        f"[待筛选 PR]({pr_url})",
+    ])
+    return "\n".join(lines)
+
+def send_dingtalk(projects, recommendations, yuque_url, pr_url, report_markdown=None):
+    """Send DingTalk notification after both Yuque and PR URLs are available."""
+    if not yuque_url or not pr_url:
+        print(f"{YELLOW}Skipping DingTalk: Yuque URL and PR URL are both required{RESET}")
+        return False
+    if not DINGTALK_WEBHOOK:
+        print(f"{YELLOW}No DingTalk webhook configured, skipping notification{RESET}")
+        return False
+
+    md_msg = build_dingtalk_markdown(projects, recommendations, yuque_url, pr_url, report_markdown=report_markdown)
+    payload = {
+        "msgtype": "markdown",
+        "markdown": {
+            "title": "Weekly Agentic AI Update",
+            "text": md_msg,
+        },
+    }
+
+    url = DINGTALK_WEBHOOK
+    ensure_no_proxy(host_from_url(url))
+    if DINGTALK_SECRET:
+        timestamp = str(round(time.time() * 1000))
+        secret_enc = DINGTALK_SECRET.encode("utf-8")
+        string_to_sign = f"{timestamp}\n{DINGTALK_SECRET}"
+        string_to_sign_enc = string_to_sign.encode("utf-8")
+        hmac_code = hmac.new(secret_enc, string_to_sign_enc, digestmod=hashlib.sha256).digest()
+        sign = urllib.parse.quote_plus(base64.b64encode(hmac_code))
+        url = f"{DINGTALK_WEBHOOK}&timestamp={timestamp}&sign={sign}"
+
+    try:
+        resp = requests.post(url, json=payload, timeout=10)
+        if resp.status_code == 200:
+            result = resp.json()
+            if result.get("errcode") == 0:
+                print(f"{GREEN}DingTalk notification sent!{RESET}")
+                return True
+            print(f"{RED}DingTalk error: {result.get('errmsg')}{RESET}")
+        else:
+            print(f"{RED}DingTalk HTTP error: {resp.status_code}{RESET}")
+    except Exception as e:
+        print(f"{RED}Failed to send DingTalk: {e}{RESET}")
+    return False
+
+def parse_report_date(report_markdown):
+    match = re.search(r"^# Agentic AI Weekly Report - ([0-9]{4}-[0-9]{2}-[0-9]{2})", report_markdown, re.MULTILINE)
+    return match.group(1) if match else datetime.now().strftime("%Y-%m-%d")
+
+def parse_report_candidates(report_markdown):
+    """Parse repo names from the Review Candidates table in a generated report."""
+    projects = []
+    for line in report_markdown.splitlines():
+        line = line.strip()
+        if not line.startswith("|"):
+            continue
+        match = re.search(r"\|\s*\d+\s*\|\s*\[([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\]\(", line)
+        if match:
+            projects.append({"repo_name": match.group(1)})
+    return projects
+
+def parse_report_highlights(report_markdown):
+    """Parse highlighted projects and reasons for concise DingTalk content."""
+    highlights = []
+    current = None
+    in_section = False
+    for line in report_markdown.splitlines():
+        if line.startswith("## Highlighted Projects"):
+            in_section = True
+            continue
+        if in_section and line.startswith("## "):
+            break
+        if not in_section:
+            continue
+        heading = re.match(r"^###\s+\d+\.\s+\[([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\]\(", line)
+        if heading:
+            current = {"repo_name": heading.group(1)}
+            highlights.append((current, 0, "重点推荐"))
+            continue
+        if current and line.startswith("- Reason:"):
+            highlights[-1] = (current, 0, line.replace("- Reason:", "", 1).strip() or "重点推荐")
+    return highlights
+
+def build_pr_body(projects, report_markdown, date_str=None):
+    date_str = date_str or datetime.now().strftime("%Y-%m-%d")
+    checklist = "\n".join(f"- [ ] {p['repo_name']}" for p in projects)
+    return "\n".join([
+        f"# Weekly Agentic AI Review - {date_str}",
+        "",
+        "## Review Checklist",
+        "",
+        "<!-- agentic-review-checklist:start -->",
+        checklist,
+        "<!-- agentic-review-checklist:end -->",
+        "",
+        "---",
+        "",
+        "## Full Weekly Report",
+        "",
+        report_markdown,
+    ])
 
 # ── GitHub PR creation ────────────────────────────────────────────────
-def create_pr(projects):
+def create_pr(projects, report_markdown, report_path):
     """Create a GitHub PR with checklist for project selection."""
     date_str = datetime.now().strftime('%Y-%m-%d')
     branch_name = f"weekly/{date_str}"
+    existing_branch = subprocess.run(
+        ["git", "branch", "--list", branch_name],
+        capture_output=True, text=True
+    ).stdout.strip()
+    if existing_branch:
+        branch_name = f"weekly/{date_str}-{datetime.now().strftime('%H%M%S')}"
+    body = build_pr_body(projects, report_markdown, date_str=date_str)
+    if len(body) > 60000:
+        print(f"{RED}PR body is too long ({len(body)} chars). Shorten report before creating PR.{RESET}")
+        return None
 
     try:
         # Create branch and commit report
         subprocess.run(["git", "checkout", "-b", branch_name], check=True, capture_output=True)
-        subprocess.run(["git", "add", REPORT_FILE], check=True, capture_output=True)
+        add_paths = [REPORT_FILE]
+        if report_path and os.path.abspath(report_path) != os.path.abspath(REPORT_FILE):
+            add_paths.append(report_path)
+        subprocess.run(["git", "add", *add_paths], check=True, capture_output=True)
         subprocess.run(["git", "commit", "-m", f"Weekly update {date_str}: {len(projects)} new projects"],
                        check=True, capture_output=True)
         subprocess.run(["git", "push", "-u", "origin", branch_name], check=True, capture_output=True)
-
-        # Build PR body with inline-checkbox table
-        body_lines = [f"## Weekly Agentic AI Projects Update — {date_str}\n"]
-        body_lines.append(f"Found **{len(projects)}** new agentic AI projects.\n")
-        body_lines.append("Check the projects you want to include:\n")
-
-        body_lines.append("| ✓ | Repo | Description | Stars | Language | Created |")
-        body_lines.append("|---|------|-------------|-------|----------|---------|")
-        for p in projects:
-            desc = md_cell(p.get("description", ""), 50)
-            stars = p.get("stars", 0)
-            stars_str = f"{stars/1000:.1f}k" if stars >= 1000 else str(stars)
-            lang = p.get("language", "-") or "-"
-            created = p.get("created_at", "-")[:7] if p.get("created_at") else "-"
-            body_lines.append(f"| - [ ] | **{p['repo_name']}** | {desc} | {stars_str} | {lang} | {created} |")
-
-        body = "\n".join(body_lines)
 
         # Determine fork owner from origin remote
         remote_url = subprocess.run(
@@ -1133,6 +1554,34 @@ def create_pr(projects):
         subprocess.run(["git", "checkout", "main"], capture_output=True)
         return None
 
+def publish_existing_report(report_path=None):
+    """Publish an already generated report without re-running data collection or LLM generation."""
+    report_path = report_path or REPORT_FILE
+    if not os.path.exists(report_path):
+        raise FileNotFoundError(f"Report not found: {report_path}")
+    with open(report_path, "r", encoding="utf-8") as f:
+        report_markdown = f.read()
+
+    projects = parse_report_candidates(report_markdown)
+    if not projects:
+        raise ValueError(f"No Review Candidates table rows found in {report_path}")
+    recommendations = parse_report_highlights(report_markdown)
+    date_str = parse_report_date(report_markdown)
+
+    print(f"{CYAN}Publishing existing report: {report_path}{RESET}")
+    print(f"{CYAN}Parsed {len(projects)} review candidates and {len(recommendations)} highlighted projects{RESET}")
+
+    print(f"\n{BOLD}=== Publish existing: Yuque ==={RESET}")
+    yuque_url = publish_to_yuque(report_markdown, date_str=date_str)
+
+    print(f"\n{BOLD}=== Publish existing: GitHub review PR ==={RESET}")
+    pr_url = create_pr(projects, report_markdown, report_path)
+
+    print(f"\n{BOLD}=== Publish existing: DingTalk summary ==={RESET}")
+    send_dingtalk(projects, recommendations, yuque_url, pr_url, report_markdown=report_markdown)
+
+    print(f"\n{GREEN}Publish existing complete!{RESET}")
+
 # ── Post-merge: parse PR and update CSV ────────────────────────────────
 
 def parse_pr_checklist(pr_body):
@@ -1152,6 +1601,10 @@ def parse_pr_checklist(pr_body):
         if line.startswith("- [x]") or line.startswith("- [ ]"):
             checked = line.startswith("- [x]")
             match = re.search(r'\*\*([^*]+)\*\*', line)
+            if match:
+                items.append((match.group(1), checked))
+                continue
+            match = re.search(r'- \[[x ]\]\s+([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)', line)
             if match:
                 items.append((match.group(1), checked))
     return items
@@ -1174,6 +1627,25 @@ def find_merged_pr():
     except (subprocess.CalledProcessError, json.JSONDecodeError):
         return None
 
+def fetch_upstream_pr(pr_number):
+    """Fetch one explicit upstream PR. Post-merge intentionally does not auto-discover PRs."""
+    try:
+        result = subprocess.run(
+            [
+                "gh", "pr", "view", str(pr_number),
+                "--repo", PR_TARGET_REPO,
+                "--json", "number,title,body,url,headRefName,state,mergedAt",
+            ],
+            capture_output=True, text=True, check=True
+        )
+        return json.loads(result.stdout)
+    except FileNotFoundError:
+        print(f"{RED}gh CLI not found. Cannot fetch upstream PR.{RESET}")
+        return None
+    except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
+        print(f"{RED}Could not fetch upstream PR #{pr_number}: {e}{RESET}")
+        return None
+
 def update_csv_with_projects(selected_projects):
     """Add selected projects to CSV."""
     with open(INPUT_CSV, newline="", encoding="utf-8") as f:
@@ -1190,6 +1662,12 @@ def update_csv_with_projects(selected_projects):
             "repo_name": p["repo_name"],
             "description": p.get("description", ""),
             "stars": p.get("stars", 0),
+            "openrank_latest": p.get("openrank_latest", ""),
+            "openrank_trend": (
+                "|".join(f"{month}:{value}" for month, value in p.get("openrank_trend", {}).items())
+                if isinstance(p.get("openrank_trend"), dict)
+                else p.get("openrank_trend", "")
+            ),
             "language": p.get("language", ""),
             "created_at": p.get("created_at", ""),
             "topics": p.get("topics", ""),
@@ -1208,6 +1686,29 @@ def update_csv_with_projects(selected_projects):
         writer.writerows(existing_rows)
 
     return added
+
+def fetch_project_records_for_repos(repo_names):
+    """Build CSV-ready project records from explicit repo names."""
+    records = []
+    for i, repo_name in enumerate(repo_names, 1):
+        print(f"  [{i}/{len(repo_names)}] Fetching {repo_name}...", end=" ")
+        info = fetch_github_info(repo_name)
+        if not info:
+            print(f"{YELLOW}skip: GitHub info unavailable{RESET}")
+            continue
+        readme = fetch_github_readme(repo_name)
+        project = {**info, "repo_name": repo_name, "readme": readme}
+        project["categories"] = classify_project(project) or ["Other"]
+        records.append(project)
+        print(f"{GREEN}{'|'.join(project['categories'])[:50]}{RESET}")
+
+    openrank_data = fetch_openrank_data([p["repo_name"] for p in records])
+    for project in records:
+        or_data = openrank_data.get(project["repo_name"], {})
+        project["openrank_latest"] = or_data.get("latest", "")
+        project["openrank_trend"] = or_data.get("trend", {})
+
+    return records
 
 # ── Taxonomy evolution ─────────────────────────────────────────────────
 def reclassify_projects(project_list):
@@ -1323,10 +1824,14 @@ def fetch_and_reclassify_top100(new_repo_names):
     analyze_taxonomy_coverage(all_rows)
 
 # ── Orchestrators ──────────────────────────────────────────────────────
-def run_check(full_mode=False):
-    """Main --check flow: query, filter, report, publish, notify, create PR."""
+def run_check(full_mode=False, report_only=False):
+    """Main --check flow: query, filter, canonical report, Yuque, PR, DingTalk."""
     print(f"\n{BOLD}=== Step 1: Query ClickHouse for top star growth projects ==={RESET}")
-    top_projects = query_top_star_growth_projects(100)
+    try:
+        top_projects = query_top_star_growth_projects(100)
+    except Exception as e:
+        print(f"{RED}ClickHouse query failed; aborting weekly check: {e}{RESET}")
+        raise
 
     print(f"\n{BOLD}=== Step 2: Fetch GitHub info and filter for agentic projects ==={RESET}")
     existing_projects = load_existing_projects()
@@ -1370,6 +1875,7 @@ def run_check(full_mode=False):
     for p in candidate_projects:
         or_data = openrank_data.get(p["repo_name"], {})
         p["openrank_latest"] = or_data.get("latest", "")
+        p["openrank_month"] = or_data.get("latest_month", "")
         p["openrank_trend"] = or_data.get("trend", {})
         p["participants"] = participants_data.get(p["repo_name"], 0)
         new_agentic_projects.append(p)
@@ -1381,50 +1887,50 @@ def run_check(full_mode=False):
         return
 
     # Generate recommendations
-    recommendations = generate_recommendations(new_agentic_projects, trend_months) if len(new_agentic_projects) >= 3 else []
+    recommendations = generate_recommendations(new_agentic_projects, trend_months, top_n=5) if len(new_agentic_projects) >= 3 else []
 
-    # Generate internal report
-    print(f"\n{BOLD}=== Step 4: Generate reports and publish ==={RESET}")
-    generate_report(new_agentic_projects, trend_months)
+    print(f"\n{BOLD}=== Step 4: Generate canonical weekly report ==={RESET}")
+    report_markdown, report_path, report_context = generate_canonical_report(
+        new_agentic_projects,
+        trend_months,
+        recommendations,
+    )
 
-    # Generate reader report and publish to Yuque
-    reader_report = generate_reader_report(new_agentic_projects, trend_months, recommendations)
-    yuque_file = publish_to_yuque(reader_report)
-
-    # Generate trend context for LLM analysis
+    # Keep the structured trend context for debugging and prompt inspection.
     generate_trend_context(new_agentic_projects, trend_months, recommendations)
 
-    # Print instructions for trend analysis → Yuque → DingTalk (in this order)
-    date_str = datetime.now().strftime('%Y-%m-%d')
-    print(f"\n{BOLD}=== Next: Trend analysis → Yuque → DingTalk ==={RESET}")
-    print(f"请执行以下步骤（按顺序）：")
-    print(f"  1. 读取 {TREND_CONTEXT_FILE}")
-    print(f"  2. 读取 {yuque_file}")
-    print(f"  3. 基于数据生成 2-3 段中文趋势洞察，引用推荐项目作为案例")
-    print(f"  4. 替换 {yuque_file} 中的 TREND_ANALYSIS_PLACEHOLDER")
-    print(f"  5. 调用 skylark_doc_create(book_id={YUQUE_BOOK_ID}, title='Agentic 每周推送 {date_str}', body=<content>) 发布到语雀")
-    print(f"  6. 获取语雀文档 URL 后，调用 send_dingtalk() 推送钉钉卡片（含语雀链接 + 趋势摘要）")
-
-    if full_mode:
+    if report_only:
+        print(f"\n{BOLD}=== Report-only mode: skipping Yuque, GitHub PR, and DingTalk ==={RESET}")
+        print(f"{GREEN}Report generated for review: {report_path}{RESET}")
+    elif full_mode:
         # Legacy: add all projects directly
         print(f"\n{BOLD}=== Full mode: adding all projects ==={RESET}")
         added = update_csv_with_projects(new_agentic_projects)
         print(f"{GREEN}Added {added} projects to CSV{RESET}")
     else:
-        # Create PR with checklist
-        create_pr(new_agentic_projects)
+        print(f"\n{BOLD}=== Step 5: Publish full report to Yuque ==={RESET}")
+        yuque_url = publish_to_yuque(report_markdown, date_str=report_context["date"])
+
+        print(f"\n{BOLD}=== Step 6: Create GitHub review PR ==={RESET}")
+        pr_url = create_pr(new_agentic_projects, report_markdown, report_path)
+
+        print(f"\n{BOLD}=== Step 7: Send DingTalk summary ==={RESET}")
+        send_dingtalk(new_agentic_projects, recommendations, yuque_url, pr_url, report_markdown=report_markdown)
 
     print(f"\n{GREEN}Check complete!{RESET}")
 
-def run_post_merge():
+def run_post_merge(pr_number):
     """Process a merged PR: update CSV with checked items, reclassify, evolve taxonomy."""
-    print(f"\n{BOLD}=== Post-merge: Finding merged PR ==={RESET}")
-    pr = find_merged_pr()
+    print(f"\n{BOLD}=== Post-merge: Fetching upstream PR #{pr_number} ==={RESET}")
+    pr = fetch_upstream_pr(pr_number)
     if not pr:
-        print(f"{RED}No merged weekly PR found. Make sure you've merged the PR first.{RESET}")
         return
 
-    print(f"Found merged PR: {pr.get('title', '')} — {pr.get('url', '')}")
+    if pr.get("state") != "MERGED" and not pr.get("mergedAt"):
+        print(f"{RED}Upstream PR #{pr_number} is not merged yet. Merge it before running --post-merge.{RESET}")
+        return
+
+    print(f"Found upstream merged PR: {pr.get('title', '')} — {pr.get('url', '')}")
 
     # Parse checklist from PR body
     body = pr.get("body", "")
@@ -1433,61 +1939,42 @@ def run_post_merge():
         print(f"{YELLOW}No checklist items found in PR body{RESET}")
         return
 
-    checked_repos = {name for name, checked in items if checked}
-    unchecked_repos = {name for name, checked in items if not checked}
+    checked_repos = [name for name, checked in items if checked]
     print(f"Checked: {len(checked_repos)} / {len(items)} projects")
 
-    # Build project data from PR body table + checklist info
-    # Parse the table in PR body for basic project info
-    all_pending = []
-    for line in body.split("\n"):
-        line = line.strip()
-        if not line.startswith("|") or line.startswith("|---") or line.startswith("| #"):
-            continue
-        parts = [c.strip() for c in line.split("|")]
-        # Filter empty strings from leading/trailing pipes
-        parts = [p for p in parts if p]
-        if len(parts) < 4:
-            continue
-        repo_name = parts[1]
-        if "/" not in repo_name:
-            continue
-        # Basic info from table
-        proj = {
-            "repo_name": repo_name,
-            "description": parts[2].replace("│", "|"),
-            "stars": 0,
-            "language": parts[4] if len(parts) > 4 else "",
-            "created_at": parts[5] if len(parts) > 5 else "",
-        }
-        all_pending.append(proj)
-
-    # If table parsing failed, fall back to checklist parsing
-    if not all_pending:
-        for name, _ in items:
-            all_pending.append({"repo_name": name, "stars": 0})
-
-    # Filter to only checked projects
-    selected = [p for p in all_pending if p["repo_name"] in checked_repos]
-    print(f"Selected {len(selected)} projects to add")
-
-    if selected:
-        # Update CSV
-        added = update_csv_with_projects(selected)
-        print(f"{GREEN}Added {added} projects to CSV{RESET}")
-
-        # Reclassify top 100 + new projects
-        new_repo_names = [p["repo_name"] for p in selected]
-        fetch_and_reclassify_top100(new_repo_names)
-    else:
+    if not checked_repos:
         print(f"{YELLOW}No projects selected{RESET}")
+        return
+
+    selected = fetch_project_records_for_repos(checked_repos)
+    print(f"Selected {len(selected)} projects to add")
+    if not selected:
+        print(f"{YELLOW}No project records could be fetched{RESET}")
+        return
+
+    # Update CSV
+    added = update_csv_with_projects(selected)
+    print(f"{GREEN}Added {added} projects to CSV{RESET}")
+    if added == 0:
+        print(f"{YELLOW}No new rows were added; skipping top project reclassification{RESET}")
+        return
+
+    # Reclassify top 100 + new projects
+    new_repo_names = [p["repo_name"] for p in selected]
+    fetch_and_reclassify_top100(new_repo_names)
 
 # ── Main workflow ─────────────────────────────────────────────────────
 def main():
+    print_runtime_context()
     parser = argparse.ArgumentParser(description="Weekly Agentic AI Projects Update")
-    parser.add_argument("--check", action="store_true", help="Check for new projects, publish report, create PR")
+    parser.add_argument("--check", action="store_true", help="Check new projects, generate report drafts, create PR")
+    parser.add_argument("--report-only", action="store_true", help="Generate the weekly report only; do not publish to Yuque, create PR, or send DingTalk")
+    parser.add_argument("--no-publish", action="store_true", help="Alias for --report-only")
+    parser.add_argument("--publish-existing", action="store_true", help="Publish an existing generated report to Yuque, GitHub PR, and DingTalk without re-running data collection")
+    parser.add_argument("--report-path", default=REPORT_FILE, help="Report path for --publish-existing")
     parser.add_argument("--confirm", action="store_true", help="(DEPRECATED) Use PR-based confirmation instead")
-    parser.add_argument("--post-merge", action="store_true", help="Process merged PR: update CSV, reclassify, evolve taxonomy")
+    parser.add_argument("--post-merge", action="store_true", help="Process a specified upstream merged PR: update CSV, reclassify, evolve taxonomy")
+    parser.add_argument("--pr", type=int, help="Required with --post-merge: upstream PR number in antgroup/llm-oss-landscape")
     parser.add_argument("--full", action="store_true", help="Full pipeline (check + confirm all without PR)")
     args = parser.parse_args()
 
@@ -1496,14 +1983,20 @@ def main():
         print(f"  1. Review the PR created by --check")
         print(f"  2. Check items you want to include")
         print(f"  3. Merge the PR")
-        print(f"  4. Run --post-merge to update CSV")
+        print(f"  4. Run --post-merge --pr <number> to update CSV")
+        return
+
+    if args.publish_existing:
+        publish_existing_report(args.report_path)
         return
 
     if args.check or args.full:
-        run_check(full_mode=args.full)
+        run_check(full_mode=args.full, report_only=args.report_only or args.no_publish)
 
     if args.post_merge:
-        run_post_merge()
+        if not args.pr:
+            parser.error("--post-merge requires --pr <upstream-pr-number>")
+        run_post_merge(args.pr)
 
 if __name__ == "__main__":
     main()

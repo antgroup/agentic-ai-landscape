@@ -8,6 +8,8 @@
 # Generated files
 .docusaurus
 .cache-loader
+__pycache__/
+*.py[cod]
 
 # Misc
 .DS_Store

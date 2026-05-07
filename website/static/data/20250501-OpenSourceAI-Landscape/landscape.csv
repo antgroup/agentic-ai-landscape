@@ -134,3 +134,4 @@
 268163609,qdrant/qdrant,Vector Storage and Search,24215,1658,58,Rust,2020/5/30,"Qdrant - High-performance, massive-scale Vector Database and Vector Search Engine for the next generation of AI. Also available in the cloud https://cloud.qdrant.io/"
 607441698,lancedb/lancedb,Vector Storage and Search,6662,498,29,Rust,2023/2/28,"Developer-friendly, embedded retrieval engine for multimodal AI. Search More; Manage Less."
 359952601,pgvector/pgvector,Vector Storage and Search,16134,789,10,C,2021/4/20,Open-source vector similarity search for Postgres
+798235565,ant-design/x,Client Inferface,4503,1083,29.01,TypeScript,2024/5/9,Craft AI-driven interface effortlessly🤖

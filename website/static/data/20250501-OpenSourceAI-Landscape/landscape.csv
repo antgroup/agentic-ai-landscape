@@ -135,3 +135,4 @@
 607441698,lancedb/lancedb,Vector Storage and Search,6662,498,29,Rust,2023/2/28,"Developer-friendly, embedded retrieval engine for multimodal AI. Search More; Manage Less."
 359952601,pgvector/pgvector,Vector Storage and Search,16134,789,10,C,2021/4/20,Open-source vector similarity search for Postgres
 798235565,ant-design/x,Client Inferface,4503,1083,29.01,TypeScript,2024/5/9,Craft AI-driven interface effortlessly🤖
+946498681,neovateai/neovate-code,Coding Assistant,1531,152,9.42,TypeScript,2025/3/11,"Neovate Code is a code agent to enhance your development. You can use it to generate code, fix bugs, review code, add tests, and more. You can run it in interactive mode or headless mode."

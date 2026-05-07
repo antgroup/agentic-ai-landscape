@@ -41,6 +41,7 @@
 610260322,chatboxai/chatbox,Client Inferface,35324,3376,36,TypeScript,2023/3/6,"User-friendly Desktop Client App for AI Models/LLMs (GPT, Claude, Gemini, Ollama...)"
 580642043,oobabooga/text-generation-webui,Client Inferface,43967,5670,28,Python,2022/12/21,"LLM UI with advanced features, easy setup, and multiple backend support."
 527591471,AUTOMATIC1111/stable-diffusion-webui,Client Inferface,153597,28560,16,Python,2022/8/22,Stable Diffusion web UI
+798235565,ant-design/x,Client Inferface,4503,1083,29.01,TypeScript,2024/5/9,Craft AI-driven interface effortlessly🤖
 862449441,stackblitz/bolt.new,Coding Assistant,15021,12675,208,TypeScript,2024/9/24,"Prompt, run, edit, and deploy full-stack web applications"
 644686905,continuedev/continue,Coding Assistant,27104,2979,169,TypeScript,2023/5/24,"⏩ Create, share, and use custom AI code assistants with our open-source IDE extensions and hub of models, rules, prompts, docs, and other building blocks"
 824874689,cline/cline,Coding Assistant,45827,5720,147,TypeScript,2024/7/6,"Autonomous coding agent right in your IDE, capable of creating/editing files, executing commands, using the browser, and more with your permission every step of the way."
@@ -134,4 +135,3 @@
 268163609,qdrant/qdrant,Vector Storage and Search,24215,1658,58,Rust,2020/5/30,"Qdrant - High-performance, massive-scale Vector Database and Vector Search Engine for the next generation of AI. Also available in the cloud https://cloud.qdrant.io/"
 607441698,lancedb/lancedb,Vector Storage and Search,6662,498,29,Rust,2023/2/28,"Developer-friendly, embedded retrieval engine for multimodal AI. Search More; Manage Less."
 359952601,pgvector/pgvector,Vector Storage and Search,16134,789,10,C,2021/4/20,Open-source vector similarity search for Postgres
-798235565,ant-design/x,Client Inferface,4503,1083,29.01,TypeScript,2024/5/9,Craft AI-driven interface effortlessly🤖

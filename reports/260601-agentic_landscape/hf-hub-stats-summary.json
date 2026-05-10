@@ -1,0 +1,567 @@
+{
+  "source": "cfahlgren1/hub-stats models.parquet",
+  "queried_at": "2026-05-09",
+  "total_models": 2858420,
+  "models_by_created_year": [
+    {
+      "year": 2022,
+      "model_count": 100596
+    },
+    {
+      "year": 2023,
+      "model_count": 319864
+    },
+    {
+      "year": 2024,
+      "model_count": 745112
+    },
+    {
+      "year": 2025,
+      "model_count": 1149636
+    },
+    {
+      "year": 2026,
+      "model_count": 543212
+    }
+  ],
+  "models_by_modality": [
+    {
+      "modality": "Unknown / not tagged",
+      "model_count": 1951878
+    },
+    {
+      "modality": "Text & code",
+      "model_count": 582693
+    },
+    {
+      "modality": "Image & vision",
+      "model_count": 138818
+    },
+    {
+      "modality": "RL & robotics",
+      "model_count": 91040
+    },
+    {
+      "modality": "Audio & speech",
+      "model_count": 41399
+    },
+    {
+      "modality": "Multimodal & video",
+      "model_count": 34729
+    },
+    {
+      "modality": "Other",
+      "model_count": 16194
+    },
+    {
+      "modality": "Tabular & time series",
+      "model_count": 1669
+    }
+  ],
+  "top_downloads_all_time": [
+    {
+      "id": "google-bert/bert-base-uncased",
+      "author": "google-bert",
+      "downloadsAllTime": 2891152250,
+      "downloads": 61771753,
+      "likes": 2645,
+      "pipeline_tag": "fill-mask",
+      "license": "license:apache-2.0"
+    },
+    {
+      "id": "sentence-transformers/all-MiniLM-L6-v2",
+      "author": "sentence-transformers",
+      "downloadsAllTime": 2724242699,
+      "downloads": 249496644,
+      "likes": 4766,
+      "pipeline_tag": "sentence-similarity",
+      "license": "license:apache-2.0"
+    },
+    {
+      "id": "MIT/ast-finetuned-audioset-10-10-0.4593",
+      "author": "MIT",
+      "downloadsAllTime": 2182867816,
+      "downloads": 556688,
+      "likes": 353,
+      "pipeline_tag": "audio-classification",
+      "license": "license:bsd-3-clause"
+    },
+    {
+      "id": "Falconsai/nsfw_image_detection",
+      "author": "Falconsai",
+      "downloadsAllTime": 1353846109,
+      "downloads": 18387431,
+      "likes": 1065,
+      "pipeline_tag": "image-classification",
+      "license": "license:apache-2.0"
+    },
+    {
+      "id": "sentence-transformers/all-mpnet-base-v2",
+      "author": "sentence-transformers",
+      "downloadsAllTime": 1206468990,
+      "downloads": 36763120,
+      "likes": 1289,
+      "pipeline_tag": "sentence-similarity",
+      "license": "license:apache-2.0"
+    },
+    {
+      "id": "openai/clip-vit-large-patch14",
+      "author": "openai",
+      "downloadsAllTime": 1136296825,
+      "downloads": 27356832,
+      "likes": 2003,
+      "pipeline_tag": "zero-shot-image-classification",
+      "license": null
+    },
+    {
+      "id": "jonatasgrosman/wav2vec2-large-xlsr-53-english",
+      "author": "jonatasgrosman",
+      "downloadsAllTime": 1105036634,
+      "downloads": 52096,
+      "likes": 477,
+      "pipeline_tag": "automatic-speech-recognition",
+      "license": "license:apache-2.0"
+    },
+    {
+      "id": "timm/mobilenetv3_small_100.lamb_in1k",
+      "author": "timm",
+      "downloadsAllTime": 1078677860,
+      "downloads": 20944362,
+      "likes": 67,
+      "pipeline_tag": "image-classification",
+      "license": "license:apache-2.0"
+    },
+    {
+      "id": "openai-community/gpt2",
+      "author": "openai-community",
+      "downloadsAllTime": 858094318,
+      "downloads": 15964184,
+      "likes": 3230,
+      "pipeline_tag": "text-generation",
+      "license": "license:mit"
+    },
+    {
+      "id": "dima806/fairface_age_image_detection",
+      "author": "dima806",
+      "downloadsAllTime": 778426413,
+      "downloads": 6215533,
+      "likes": 73,
+      "pipeline_tag": "image-classification",
+      "license": "license:apache-2.0"
+    },
+    {
+      "id": "FacebookAI/xlm-roberta-large",
+      "author": "FacebookAI",
+      "downloadsAllTime": 689786967,
+      "downloads": 6838766,
+      "likes": 511,
+      "pipeline_tag": "fill-mask",
+      "license": "license:mit"
+    },
+    {
+      "id": "google/electra-base-discriminator",
+      "author": "google",
+      "downloadsAllTime": 689375092,
+      "downloads": 56170243,
+      "likes": 103,
+      "pipeline_tag": null,
+      "license": "license:apache-2.0"
+    },
+    {
+      "id": "distilbert/distilbert-base-uncased",
+      "author": "distilbert",
+      "downloadsAllTime": 645184620,
+      "downloads": 15006949,
+      "likes": 874,
+      "pipeline_tag": "fill-mask",
+      "license": "license:apache-2.0"
+    },
+    {
+      "id": "FacebookAI/xlm-roberta-base",
+      "author": "FacebookAI",
+      "downloadsAllTime": 623821418,
+      "downloads": 19040224,
+      "likes": 823,
+      "pipeline_tag": "fill-mask",
+      "license": "license:mit"
+    },
+    {
+      "id": "FacebookAI/roberta-large",
+      "author": "FacebookAI",
+      "downloadsAllTime": 605312340,
+      "downloads": 20012809,
+      "likes": 285,
+      "pipeline_tag": "fill-mask",
+      "license": "license:mit"
+    },
+    {
+      "id": "FacebookAI/roberta-base",
+      "author": "FacebookAI",
+      "downloadsAllTime": 599707860,
+      "downloads": 18573907,
+      "likes": 596,
+      "pipeline_tag": "fill-mask",
+      "license": "license:mit"
+    },
+    {
+      "id": "openai/clip-vit-base-patch32",
+      "author": "openai",
+      "downloadsAllTime": 579692315,
+      "downloads": 21610888,
+      "likes": 932,
+      "pipeline_tag": "zero-shot-image-classification",
+      "license": null
+    },
+    {
+      "id": "microsoft/resnet-50",
+      "author": "microsoft",
+      "downloadsAllTime": 570275414,
+      "downloads": 294481,
+      "likes": 492,
+      "pipeline_tag": "image-classification",
+      "license": "license:apache-2.0"
+    },
+    {
+      "id": "BAAI/bge-base-en-v1.5",
+      "author": "BAAI",
+      "downloadsAllTime": 525472366,
+      "downloads": 8577120,
+      "likes": 416,
+      "pipeline_tag": "feature-extraction",
+      "license": "license:mit"
+    },
+    {
+      "id": "distilbert/distilbert-base-uncased-finetuned-sst-2-english",
+      "author": "distilbert",
+      "downloadsAllTime": 385304400,
+      "downloads": 3473591,
+      "likes": 894,
+      "pipeline_tag": "text-classification",
+      "license": "license:apache-2.0"
+    }
+  ],
+  "top_authors_by_model_count": [
+    {
+      "author": "mradermacher",
+      "model_count": 63698,
+      "models_with_license": 40287,
+      "downloads_30d": 16046334,
+      "downloads_all_time": 203586378
+    },
+    {
+      "author": "RichardErkhov",
+      "model_count": 26277,
+      "models_with_license": 14,
+      "downloads_30d": 857605,
+      "downloads_all_time": 23669262
+    },
+    {
+      "author": "Krabat",
+      "model_count": 12206,
+      "models_with_license": 0,
+      "downloads_30d": 1578,
+      "downloads_all_time": 24365
+    },
+    {
+      "author": "xueyj",
+      "model_count": 11984,
+      "models_with_license": 1,
+      "downloads_30d": 438,
+      "downloads_all_time": 53719
+    },
+    {
+      "author": "SALUTEASD",
+      "model_count": 7022,
+      "models_with_license": 0,
+      "downloads_30d": 186,
+      "downloads_all_time": 11938
+    },
+    {
+      "author": "John6666",
+      "model_count": 6499,
+      "models_with_license": 6490,
+      "downloads_30d": 1779933,
+      "downloads_all_time": 29405644
+    },
+    {
+      "author": "downtown1",
+      "model_count": 5160,
+      "models_with_license": 0,
+      "downloads_30d": 114,
+      "downloads_all_time": 8711
+    },
+    {
+      "author": "introspection-auditing",
+      "model_count": 5136,
+      "models_with_license": 0,
+      "downloads_30d": 1293,
+      "downloads_all_time": 18004
+    },
+    {
+      "author": "manbull",
+      "model_count": 5108,
+      "models_with_license": 1,
+      "downloads_30d": 574,
+      "downloads_all_time": 8723
+    },
+    {
+      "author": "tensorblock",
+      "model_count": 4947,
+      "models_with_license": 3745,
+      "downloads_30d": 136693,
+      "downloads_all_time": 7088988
+    },
+    {
+      "author": "dogssss",
+      "model_count": 4742,
+      "models_with_license": 0,
+      "downloads_30d": 66,
+      "downloads_all_time": 15988
+    },
+    {
+      "author": "mlx-community",
+      "model_count": 4726,
+      "models_with_license": 4001,
+      "downloads_30d": 7336702,
+      "downloads_all_time": 86696065
+    },
+    {
+      "author": "LarryAIDraw",
+      "model_count": 4662,
+      "models_with_license": 4660,
+      "downloads_30d": 0,
+      "downloads_all_time": 0
+    },
+    {
+      "author": "tronsdds",
+      "model_count": 4536,
+      "models_with_license": 0,
+      "downloads_30d": 128,
+      "downloads_all_time": 8431
+    },
+    {
+      "author": "rejjiex",
+      "model_count": 4498,
+      "models_with_license": 0,
+      "downloads_30d": 87,
+      "downloads_all_time": 8331
+    },
+    {
+      "author": "jerseyjerry",
+      "model_count": 4479,
+      "models_with_license": 33,
+      "downloads_30d": 5792,
+      "downloads_all_time": 36683
+    },
+    {
+      "author": "linger2334",
+      "model_count": 4291,
+      "models_with_license": 0,
+      "downloads_30d": 86,
+      "downloads_all_time": 7570
+    },
+    {
+      "author": "johngreendr1",
+      "model_count": 4237,
+      "models_with_license": 0,
+      "downloads_30d": 3799,
+      "downloads_all_time": 10934
+    },
+    {
+      "author": "MayBashendy",
+      "model_count": 4106,
+      "models_with_license": 129,
+      "downloads_30d": 4671,
+      "downloads_all_time": 41137
+    },
+    {
+      "author": "ProbeX",
+      "model_count": 4005,
+      "models_with_license": 0,
+      "downloads_30d": 18120,
+      "downloads_all_time": 204219
+    }
+  ],
+  "top_base_models": [
+    {
+      "base_model": "black-forest-labs/FLUX.1-dev",
+      "derived_count": 37503,
+      "finetune_count": 569,
+      "adapter_count": 36855,
+      "quantized_count": 69,
+      "derived_downloads_30d": 745320,
+      "derived_likes": 38433
+    },
+    {
+      "base_model": "Qwen/Qwen1.5-0.5B",
+      "derived_count": 32531,
+      "finetune_count": 30,
+      "adapter_count": 32472,
+      "quantized_count": 27,
+      "derived_downloads_30d": 22736,
+      "derived_likes": 56
+    },
+    {
+      "base_model": "Qwen/Qwen1.5-1.8B",
+      "derived_count": 30627,
+      "finetune_count": 32,
+      "adapter_count": 30581,
+      "quantized_count": 12,
+      "derived_downloads_30d": 3847,
+      "derived_likes": 16
+    },
+    {
+      "base_model": "google/gemma-2b",
+      "derived_count": 24026,
+      "finetune_count": 286,
+      "adapter_count": 23698,
+      "quantized_count": 35,
+      "derived_downloads_30d": 191474,
+      "derived_likes": 1172
+    },
+    {
+      "base_model": "distilbert/distilbert-base-uncased",
+      "derived_count": 11899,
+      "finetune_count": 11475,
+      "adapter_count": 376,
+      "quantized_count": 48,
+      "derived_downloads_30d": 963464,
+      "derived_likes": 736
+    },
+    {
+      "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
+      "derived_count": 9596,
+      "finetune_count": 1189,
+      "adapter_count": 8377,
+      "quantized_count": 23,
+      "derived_downloads_30d": 1024916,
+      "derived_likes": 15596
+    },
+    {
+      "base_model": "google/gemma-7b",
+      "derived_count": 9588,
+      "finetune_count": 366,
+      "adapter_count": 9194,
+      "quantized_count": 21,
+      "derived_downloads_30d": 54366,
+      "derived_likes": 1563
+    },
+    {
+      "base_model": "Qwen/Qwen3-4B-Instruct-2507",
+      "derived_count": 7361,
+      "finetune_count": 1675,
+      "adapter_count": 5429,
+      "quantized_count": 234,
+      "derived_downloads_30d": 1975941,
+      "derived_likes": 2065
+    },
+    {
+      "base_model": "google-bert/bert-base-uncased",
+      "derived_count": 6846,
+      "finetune_count": 6682,
+      "adapter_count": 131,
+      "quantized_count": 26,
+      "derived_downloads_30d": 428664,
+      "derived_likes": 554
+    },
+    {
+      "base_model": "Qwen/Qwen1.5-7B",
+      "derived_count": 6374,
+      "finetune_count": 19,
+      "adapter_count": 6331,
+      "quantized_count": 23,
+      "derived_downloads_30d": 2205,
+      "derived_likes": 40
+    },
+    {
+      "base_model": "Qwen/Qwen2.5-7B-Instruct",
+      "derived_count": 5772,
+      "finetune_count": 3281,
+      "adapter_count": 2036,
+      "quantized_count": 308,
+      "derived_downloads_30d": 3059124,
+      "derived_likes": 4536
+    },
+    {
+      "base_model": "meta-llama/Llama-3.1-8B-Instruct",
+      "derived_count": 5541,
+      "finetune_count": 2718,
+      "adapter_count": 2105,
+      "quantized_count": 626,
+      "derived_downloads_30d": 4758577,
+      "derived_likes": 5860
+    },
+    {
+      "base_model": "lerobot/smolvla_base",
+      "derived_count": 5356,
+      "finetune_count": 5351,
+      "adapter_count": 4,
+      "quantized_count": 1,
+      "derived_downloads_30d": 74993,
+      "derived_likes": 84
+    },
+    {
+      "base_model": "unsloth/llama-3-8b-bnb-4bit",
+      "derived_count": 4256,
+      "finetune_count": 3082,
+      "adapter_count": 297,
+      "quantized_count": 877,
+      "derived_downloads_30d": 31616,
+      "derived_likes": 303
+    },
+    {
+      "base_model": "meta-llama/Meta-Llama-3-8B-Instruct",
+      "derived_count": 4197,
+      "finetune_count": 1077,
+      "adapter_count": 2403,
+      "quantized_count": 270,
+      "derived_downloads_30d": 373383,
+      "derived_likes": 3746
+    },
+    {
+      "base_model": "mistralai/Mistral-7B-v0.1",
+      "derived_count": 4064,
+      "finetune_count": 1024,
+      "adapter_count": 2466,
+      "quantized_count": 184,
+      "derived_downloads_30d": 742971,
+      "derived_likes": 12101
+    },
+    {
+      "base_model": "aubmindlab/bert-base-arabertv02",
+      "derived_count": 4030,
+      "finetune_count": 4024,
+      "adapter_count": 5,
+      "quantized_count": 1,
+      "derived_downloads_30d": 31759,
+      "derived_likes": 102
+    },
+    {
+      "base_model": "FacebookAI/xlm-roberta-base",
+      "derived_count": 3992,
+      "finetune_count": 3928,
+      "adapter_count": 52,
+      "quantized_count": 12,
+      "derived_downloads_30d": 886693,
+      "derived_likes": 787
+    },
+    {
+      "base_model": "openai-community/gpt2",
+      "derived_count": 3931,
+      "finetune_count": 2143,
+      "adapter_count": 1689,
+      "quantized_count": 88,
+      "derived_downloads_30d": 97338,
+      "derived_likes": 304
+    },
+    {
+      "base_model": "openai/whisper-small",
+      "derived_count": 3755,
+      "finetune_count": 3495,
+      "adapter_count": 230,
+      "quantized_count": 30,
+      "derived_downloads_30d": 153636,
+      "derived_likes": 786
+    }
+  ]
+}

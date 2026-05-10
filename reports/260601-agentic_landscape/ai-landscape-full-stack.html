@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Tech Landscape — Full Stack Architecture Map</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB',sans-serif;background:#060810;color:#d0d8e8;min-height:100vh;padding:32px 16px;font-size:12px;line-height:1.5}
+.wrap{max-width:1600px;margin:0 auto}
+h1{font-size:26px;font-weight:800;text-align:center;margin-bottom:6px;background:linear-gradient(135deg,#60a5fa,#a78bfa,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{text-align:center;color:#5a6478;font-size:13px;margin-bottom:20px}
+
+/* Legend */
+.legend{display:flex;justify-content:center;gap:20px;flex-wrap:wrap;margin-bottom:20px;padding:10px 16px;background:rgba(255,255,255,.02);border-radius:10px;border:1px solid rgba(255,255,255,.04)}
+.leg{display:flex;align-items:center;gap:6px;font-size:11px;color:#7a849a}
+.ld{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+
+/* Grid system */
+.main-grid{display:grid;grid-template-columns:1fr 220px;gap:12px}
+.layers{display:flex;flex-direction:column;gap:8px}
+.eval-col{display:flex;flex-direction:column;gap:8px}
+
+/* Layer card */
+.layer{border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015)}
+.layer-head{display:flex;align-items:center;gap:12px;padding:10px 16px;cursor:default}
+.layer-head h2{font-size:14px;font-weight:700}
+.layer-head .badge{font-size:9px;padding:2px 8px;border-radius:10px;font-weight:600;white-space:nowrap}
+.layer-desc{font-size:10px;color:#5a6478;margin-left:auto}
+
+.layer-body{display:flex;flex-wrap:wrap;gap:2px;padding:4px}
+.sub-block{flex:1;min-width:200px;padding:10px 12px;background:rgba(255,255,255,.02);border-radius:6px;position:relative}
+.sub-block:hover{background:rgba(255,255,255,.04)}
+.sb-head{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.tags{display:flex;flex-wrap:wrap;gap:4px}
+.t{font-size:10px;padding:2px 7px;border-radius:4px;font-weight:500;white-space:nowrap;border:1px solid transparent;cursor:default;transition:all .15s}
+.t:hover{transform:translateY(-1px)}
+
+/* Tag colors by type */
+.t-os{background:rgba(34,211,238,.08);color:#67e8f9;border-color:rgba(34,211,238,.15)} /* open source */
+.t-cm{background:rgba(249,115,22,.08);color:#fdba74;border-color:rgba(249,115,22,.15)} /* commercial */
+.t-ali{background:rgba(255,140,58,.12);color:#fbbf24;border-color:rgba(255,140,58,.25);font-weight:700} /* alibaba */
+
+/* Principle note */
+.principle-bar{margin:0 4px 4px;padding:8px 12px;border-radius:6px;background:linear-gradient(90deg,rgba(100,160,255,.04),rgba(140,120,255,.02));border:1px solid rgba(100,160,255,.1);font-size:10px;color:#7a94b8;line-height:1.6}
+.principle-bar strong{color:#93c5fd}
+
+/* Layer theme colors */
+.lh-app{background:rgba(244,63,94,.08)}.lh-app h2{color:#fb7185}
+.lh-agent{background:rgba(168,85,247,.08)}.lh-agent h2{color:#a78bfa}
+.lh-model{background:rgba(59,130,246,.08)}.lh-model h2{color:#60a5fa}
+.lh-infra{background:rgba(16,185,129,.08)}.lh-infra h2{color:#34d399}
+.lh-hw{background:rgba(251,191,36,.08)}.lh-hw h2{color:#fbbf24}
+.sb-app .sb-head{color:rgba(244,63,94,.5)}
+.sb-agent .sb-head{color:rgba(168,85,247,.5)}
+.sb-model .sb-head{color:rgba(59,130,246,.5)}
+.sb-infra .sb-head{color:rgba(16,185,129,.5)}
+.sb-hw .sb-head{color:rgba(251,191,36,.5)}
+
+/* Eval column */
+.eval-card{border-radius:10px;padding:10px 12px;background:rgba(163,230,53,.03);border:1px solid rgba(163,230,53,.08)}
+.eval-card h3{font-size:11px;font-weight:700;color:#a3e635;margin-bottom:6px}
+.eval-card .t{background:rgba(163,230,53,.08);color:#bef264;border-color:rgba(163,230,53,.12)}
+
+/* Arrow between layers */
+.arr{text-align:center;padding:2px 0;font-size:10px;color:#1a2030;letter-spacing:4px;user-select:none}
+
+.footer{text-align:center;padding:20px 0 8px;font-size:10px;color:#1a2030}
+
+@media(max-width:1100px){.main-grid{grid-template-columns:1fr}.eval-col{flex-direction:row;flex-wrap:wrap}.eval-card{flex:1;min-width:200px}}
+@media(max-width:700px){.sub-block{min-width:100%}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>AI Technology Landscape — Full-Stack Architecture Map</h1>
+<p class="subtitle">4 Layers + Evaluation Axis | Open Source vs Commercial | Open Source Strategy Principles | April 2026</p>
+
+<div class="legend">
+  <div class="leg"><div class="ld" style="background:#22d3ee"></div>Open Source</div>
+  <div class="leg"><div class="ld" style="background:#f97316"></div>Commercial / Closed</div>
+  <div class="leg"><div class="ld" style="background:linear-gradient(135deg,#ff8c3a,#fbbf24);border:1px solid #ff6a00"></div>Alibaba Asset</div>
+  <div class="leg"><div class="ld" style="background:#fb7185"></div>Application Layer</div>
+  <div class="leg"><div class="ld" style="background:#a78bfa"></div>Agent Layer</div>
+  <div class="leg"><div class="ld" style="background:#60a5fa"></div>Model Layer</div>
+  <div class="leg"><div class="ld" style="background:#34d399"></div>Model Infra</div>
+  <div class="leg"><div class="ld" style="background:#fbbf24"></div>Hardware / Chip</div>
+  <div class="leg"><div class="ld" style="background:#a3e635"></div>Evaluation (Axis)</div>
+</div>
+
+<div class="main-grid">
+<!-- ============ LEFT: LAYERS ============ -->
+<div class="layers">
+
+<!-- ========== APPLICATION LAYER ========== -->
+<div class="layer">
+  <div class="layer-head lh-app">
+    <h2>APPLICATION LAYER</h2>
+    <span class="badge" style="background:rgba(244,63,94,.15);color:#fb7185">End-User Agent Products</span>
+    <span class="layer-desc">Coding Agents 最拥挤 | Personal Assistants 开源主导 | Voice Agents 高速增长</span>
+  </div>
+  <div class="layer-body">
+    <div class="sub-block sb-app">
+      <div class="sb-head">Coding Agents</div>
+      <div class="tags">
+        <span class="t t-cm">Claude Code (Anthropic)</span>
+        <span class="t t-cm">Codex (OpenAI)</span>
+        <span class="t t-cm">Cursor</span>
+        <span class="t t-cm">Copilot (GitHub)</span>
+        <span class="t t-cm">Windsurf (OpenAI)</span>
+        <span class="t t-cm">Gemini Code Assist</span>
+        <span class="t t-cm">Devin</span>
+        <span class="t t-cm">Augment</span>
+        <span class="t t-os">Cline (30k★)</span>
+        <span class="t t-os">Aider (30k★)</span>
+        <span class="t t-os">OpenHands (50k★)</span>
+        <span class="t t-os">Continue (25k★)</span>
+        <span class="t t-os">Goose (Block)</span>
+        <span class="t t-os">OpenCode</span>
+        <span class="t t-os">SWE-Agent</span>
+        <span class="t t-os">Crush</span>
+        <span class="t t-ali">Qwen Code</span>
+      </div>
+    </div>
+    <div class="sub-block sb-app">
+      <div class="sb-head">Agentic Personal Assistants (执行型)</div>
+      <div class="tags">
+        <span class="t t-os">OpenClaw ★</span>
+        <span class="t t-os">NemoClaw (NVIDIA, OpenClaw兼容)</span>
+        <span class="t t-os">Hermes Agent</span>
+        <span class="t t-ali">CoPaw (阿里)</span>
+        <span class="t t-cm">Claude Code Work (Anthropic)</span>
+        <span class="t t-os">AnythingLLM (40k★)</span>
+        <span class="t t-cm">Rabbit r1</span>
+        <span class="t t-cm">Bee (Apple)</span>
+      </div>
+    </div>
+    <div class="sub-block sb-app">
+      <div class="sb-head" style="opacity:.4">Chat UI (传统对话型, 趋于过时)</div>
+      <div class="tags">
+        <span class="t t-os" style="opacity:.45">NextChat</span>
+        <span class="t t-os" style="opacity:.45">Open WebUI</span>
+        <span class="t t-os" style="opacity:.45">Lobe Chat</span>
+        <span class="t t-os" style="opacity:.45">Chatbox</span>
+        <span class="t t-cm" style="opacity:.45">LM Studio</span>
+      </div>
+    </div>
+    <div class="sub-block sb-app">
+      <div class="sb-head">Browser / Computer-Use Agents</div>
+      <div class="tags">
+        <span class="t t-os">Browser Use (60k★)</span>
+        <span class="t t-os">Stagehand (20k★)</span>
+        <span class="t t-os">Agent TARS (ByteDance)</span>
+        <span class="t t-os">Skyvern (15k★)</span>
+        <span class="t t-os">LaVague</span>
+        <span class="t t-cm">Operator (OpenAI)</span>
+        <span class="t t-cm">Project Mariner (Google)</span>
+        <span class="t t-cm">Computer Use (Anthropic)</span>
+      </div>
+    </div>
+    <div class="sub-block sb-app">
+      <div class="sb-head">Enterprise Workflow Agents</div>
+      <div class="tags">
+        <span class="t t-cm">Agentforce (Salesforce)</span>
+        <span class="t t-cm">Copilot Studio (Microsoft)</span>
+        <span class="t t-cm">Agentspace (Google)</span>
+        <span class="t t-cm">Frontier (OpenAI)</span>
+        <span class="t t-cm">Bedrock Agents (AWS)</span>
+        <span class="t t-cm">ServiceNow AI Agents</span>
+        <span class="t t-cm">UiPath Autopilot</span>
+      </div>
+    </div>
+    <div class="sub-block sb-app">
+      <div class="sb-head">Voice / Video Agents</div>
+      <div class="tags">
+        <span class="t t-os">Pipecat (8k★)</span>
+        <span class="t t-os">LiveKit Agents (12k★)</span>
+        <span class="t t-os">Vocode</span>
+        <span class="t t-cm">Vapi</span>
+        <span class="t t-cm">Retell AI</span>
+        <span class="t t-cm">ElevenLabs</span>
+        <span class="t t-cm">Play.ai</span>
+        <span class="t t-cm">Bland AI</span>
+      </div>
+    </div>
+  </div>
+  <div class="principle-bar"><strong>开源原则：</strong>开源 Agent 产品获取用户和社区贡献速度远超闭源；协议兼容性（MCP / OpenClaw）是生态护城河的关键；商业化需通过差异化能力（安全/企业集成/SLA）实现，而非限制开源。</div>
+</div>
+
+<div class="arr">▼ ▼ ▼ ▼ ▼</div>
+
+<!-- ========== AGENT LAYER ========== -->
+<div class="layer">
+  <div class="layer-head lh-agent">
+    <h2>AGENT LAYER</h2>
+    <span class="badge" style="background:rgba(168,85,247,.15);color:#a78bfa">构建 Agent 所需的全部组件</span>
+    <span class="layer-desc">MCP 事实标准 | ACP+A2A 合并 | 可观测性和安全尚无赢家</span>
+  </div>
+  <div class="layer-body">
+    <div class="sub-block sb-agent">
+      <div class="sb-head">Protocols</div>
+      <div class="tags">
+        <span class="t t-os">MCP (Anthropic) ★事实标准</span>
+        <span class="t t-os">A2A (Google) + ACP (IBM) 已合并</span>
+        <span class="t t-os">AG-UI (CopilotKit)</span>
+        <span class="t t-os">ANP (IETF draft)</span>
+        <span class="t t-os">Agent Protocol (e2b)</span>
+        <span class="t t-os">OpenAPI / Swagger</span>
+      </div>
+    </div>
+    <div class="sub-block sb-agent">
+      <div class="sb-head">Low-Code Orchestration</div>
+      <div class="tags">
+        <span class="t t-os">Dify</span>
+        <span class="t t-os">n8n</span>
+        <span class="t t-os">Activepieces</span>
+        <span class="t t-os">Flowise</span>
+        <span class="t t-os">Langflow (DataStax)</span>
+        <span class="t t-os">ComfyUI</span>
+        <span class="t t-cm">Coze (ByteDance)</span>
+        <span class="t t-cm">Wordware</span>
+        <span class="t t-cm">Stack AI</span>
+      </div>
+    </div>
+    <div class="sub-block sb-agent">
+      <div class="sb-head">Code-First Frameworks</div>
+      <div class="tags">
+        <span class="t t-os">LangGraph / LangChain</span>
+        <span class="t t-os">CrewAI (30k★)</span>
+        <span class="t t-os">AutoGen / AG2 (Microsoft)</span>
+        <span class="t t-os">OpenAI Agents SDK</span>
+        <span class="t t-os">Google ADK</span>
+        <span class="t t-os">Mastra (TypeScript)</span>
+        <span class="t t-os">Pydantic AI</span>
+        <span class="t t-os">Semantic Kernel (MS)</span>
+        <span class="t t-os">Haystack (deepset)</span>
+        <span class="t t-os">Agno (ex-Phidata)</span>
+        <span class="t t-os">smolagents (HF)</span>
+        <span class="t t-os">OpenShell (NVIDIA, Agent Runtime)</span>
+      </div>
+    </div>
+    <div class="sub-block sb-agent">
+      <div class="sb-head">API Gateway / Model Router</div>
+      <div class="tags">
+        <span class="t t-os">LiteLLM ★主流</span>
+        <span class="t t-ali">Higress (阿里) ★AI 原生网关</span>
+        <span class="t t-os">One API / New API</span>
+        <span class="t t-os">Bifrost (Go, 高性能)</span>
+        <span class="t t-os">Kong AI Gateway</span>
+        <span class="t t-cm">Portkey</span>
+        <span class="t t-cm">OpenRouter</span>
+        <span class="t t-cm">AI Gateway (Cloudflare)</span>
+        <span class="t t-cm">Martian (智能路由)</span>
+      </div>
+    </div>
+    <div class="sub-block sb-agent">
+      <div class="sb-head">Sandbox / Execution</div>
+      <div class="tags">
+        <span class="t t-os">E2B (Firecracker, 150ms启动)</span>
+        <span class="t t-os">Daytona</span>
+        <span class="t t-os">OpenSandbox</span>
+        <span class="t t-os">Firecracker (AWS)</span>
+        <span class="t t-cm">Modal</span>
+        <span class="t t-cm">Fly.io Machines</span>
+        <span class="t t-cm">Runloop</span>
+        <span class="t t-cm">CodeSandbox</span>
+      </div>
+    </div>
+    <div class="sub-block sb-agent">
+      <div class="sb-head">Memory / State / RAG</div>
+      <div class="tags">
+        <span class="t t-os">Mem0</span>
+        <span class="t t-os">Letta (ex-MemGPT)</span>
+        <span class="t t-os">Zep</span>
+        <span class="t t-os">LlamaIndex</span>
+        <span class="t t-os">RAGFlow</span>
+        <span class="t t-os">Chroma</span>
+        <span class="t t-os">Milvus (Zilliz)</span>
+        <span class="t t-os">Qdrant</span>
+        <span class="t t-os">Weaviate</span>
+        <span class="t t-os">pgvector</span>
+        <span class="t t-cm">Pinecone</span>
+      </div>
+    </div>
+    <div class="sub-block sb-agent">
+      <div class="sb-head">Observability</div>
+      <div class="tags">
+        <span class="t t-os">Langfuse ★OS领先</span>
+        <span class="t t-os">Arize Phoenix</span>
+        <span class="t t-os">OpenLLMetry (OTel)</span>
+        <span class="t t-os">Helicone</span>
+        <span class="t t-os">AgentOps</span>
+        <span class="t t-os">Lunary</span>
+        <span class="t t-os">Opik (Comet)</span>
+        <span class="t t-cm">LangSmith (LangChain)</span>
+        <span class="t t-cm">Braintrust</span>
+        <span class="t t-cm">W&B Weave</span>
+      </div>
+    </div>
+    <div class="sub-block sb-agent">
+      <div class="sb-head">Guardrails / Safety</div>
+      <div class="tags">
+        <span class="t t-os">NeMo Guardrails (NVIDIA) ★</span>
+        <span class="t t-os">Guardrails AI</span>
+        <span class="t t-os">LlamaGuard 1/2/3 (Meta)</span>
+        <span class="t t-os">LlamaFirewall (Meta)</span>
+        <span class="t t-os">DeepTeam (Red-team)</span>
+        <span class="t t-os">Guidance (Microsoft)</span>
+        <span class="t t-os">LMQL (ETH Zurich)</span>
+        <span class="t t-os">Rebuff</span>
+        <span class="t t-cm">Lakera Guard</span>
+        <span class="t t-cm">Azure Content Safety</span>
+      </div>
+    </div>
+  </div>
+  <div class="principle-bar"><strong>开源原则：</strong>协议层<strong>必须开源</strong>才能成为标准——谁定义协议谁引导生态方向。可观测性和安全/Guardrails 是尚无赢家的窗口领域，适合通过开源建立标准。网关/路由是 Agent 流量入口，开源做规模、托管服务做利润。</div>
+</div>
+
+<div class="arr">▼ ▼ ▼ ▼ ▼</div>
+
+<!-- ========== MODEL LAYER ========== -->
+<div class="layer">
+  <div class="layer-head lh-model">
+    <h2>MODEL LAYER</h2>
+    <span class="badge" style="background:rgba(59,130,246,.15);color:#60a5fa">Frontier / Mid / Small + Closed + Distribution</span>
+    <span class="layer-desc">MoE 全面胜出 | 开源闭源差距以月计 | MIT/Apache 2.0 许可证获胜</span>
+  </div>
+  <div class="layer-body">
+    <div class="sub-block sb-model">
+      <div class="sb-head">Open Source — Frontier</div>
+      <div class="tags">
+        <span class="t t-ali">Qwen 3.5 (397B MoE, Apache 2.0)</span>
+        <span class="t t-os">Llama 4 Maverick (400B MoE)</span>
+        <span class="t t-os">DeepSeek-V3.2 (671B MoE, MIT)</span>
+        <span class="t t-os">DeepSeek-R1 (671B MoE, MIT)</span>
+        <span class="t t-os">Nemotron-Ultra-253B (NVIDIA)</span>
+        <span class="t t-os">Mistral Large 3 (675B MoE, Apache)</span>
+        <span class="t t-os">GLM-4.5 (355B MoE, MIT)</span>
+        <span class="t t-os">DBRX (132B MoE)</span>
+      </div>
+    </div>
+    <div class="sub-block sb-model">
+      <div class="sb-head">Open Source — Mid-Tier</div>
+      <div class="tags">
+        <span class="t t-ali">Qwen 2.5 系列 (7B-72B)</span>
+        <span class="t t-os">Phi-4 / Phi-4-reasoning (14B)</span>
+        <span class="t t-os">Nemotron-4 (8B/15B, NVIDIA)</span>
+        <span class="t t-os">InternLM3 (8B)</span>
+        <span class="t t-os">GLM-4 (9B)</span>
+        <span class="t t-os">Mistral Small 3.1 (24B)</span>
+        <span class="t t-os">Command A (111B MoE)</span>
+      </div>
+    </div>
+    <div class="sub-block sb-model">
+      <div class="sb-head">Open Source — Small / Edge</div>
+      <div class="tags">
+        <span class="t t-ali">Qwen 2.5-0.5B/1.5B/3B</span>
+        <span class="t t-os">Gemma 4 (E2B/E4B/12B/27B) ★NEW</span>
+        <span class="t t-os">Phi-4-mini (3.8B)</span>
+        <span class="t t-os">SmolLM2 (135M-1.7B)</span>
+        <span class="t t-os">Llama 3.2 (1B/3B)</span>
+        <span class="t t-os">TinyLlama (1.1B)</span>
+        <span class="t t-os">Ministral (3B-14B)</span>
+      </div>
+    </div>
+    <div class="sub-block sb-model">
+      <div class="sb-head">Closed Source — Frontier</div>
+      <div class="tags">
+        <span class="t t-cm">Claude Opus 4 / Sonnet 4 (Anthropic)</span>
+        <span class="t t-cm">Claude Mythos (Anthropic, Next-Gen)</span>
+        <span class="t t-cm">GPT-5 / 5.4 (OpenAI)</span>
+        <span class="t t-cm">o3 / o4-mini (OpenAI)</span>
+        <span class="t t-cm">Gemini 3 Pro / Flash (Google)</span>
+        <span class="t t-cm">Grok 3 (xAI)</span>
+        <span class="t t-cm">Mistral Premier (Codestral)</span>
+      </div>
+    </div>
+    <div class="sub-block sb-model">
+      <div class="sb-head">Model Distribution</div>
+      <div class="tags">
+        <span class="t t-os">HuggingFace Hub (1M+ models) ★</span>
+        <span class="t t-ali">ModelScope (阿里)</span>
+        <span class="t t-os">Ollama (100k★, 本地推理标准)</span>
+        <span class="t t-os">GGUF / llama.cpp 生态</span>
+        <span class="t t-cm">Replicate</span>
+        <span class="t t-cm">Together AI</span>
+        <span class="t t-cm">OpenRouter</span>
+        <span class="t t-cm">Groq (LPU 极速推理)</span>
+      </div>
+    </div>
+  </div>
+  <div class="principle-bar"><strong>开源原则：</strong>Apache 2.0 / MIT 许可证在全球获得最大信任度和采纳率。开源模型做生态引力中心，闭源旗舰做价值区隔（Red Hat 模式）。模型分发平台是生态枢纽——与 Ollama/GGUF 生态集成是关键。Small/Edge 模型是端侧 AI 和 IoT 的入口。</div>
+</div>
+
+<div class="arr">▼ ▼ ▼ ▼ ▼</div>
+
+<!-- ========== MODEL INFRA LAYER ========== -->
+<div class="layer">
+  <div class="layer-head lh-infra">
+    <h2>MODEL INFRA LAYER</h2>
+    <span class="badge" style="background:rgba(16,185,129,.15);color:#34d399">Data + Pre-Training + Post-Training + Inference</span>
+    <span class="layer-desc">推理成本 33x/年↓ | vLLM 主导但 SGLang 追赶 | LLaMA-Factory 80k★</span>
+  </div>
+  <div class="layer-body">
+    <div class="sub-block sb-infra">
+      <div class="sb-head">Data</div>
+      <div class="tags">
+        <span class="t t-os">FineWeb / FineWeb2 (HF)</span>
+        <span class="t t-os">RedPajama v2 (Together)</span>
+        <span class="t t-os">DCLM (NeurIPS Best Paper)</span>
+        <span class="t t-os">The Stack v2 (Code)</span>
+        <span class="t t-os">Dolma (Ai2)</span>
+        <span class="t t-ali">Data-Juicer (阿里) ★</span>
+        <span class="t t-os">datatrove (HF)</span>
+        <span class="t t-os">NeMo Curator (NVIDIA)</span>
+        <span class="t t-os">Magpie / distilabel (合成)</span>
+        <span class="t t-os">Argilla (标注, HF收购)</span>
+        <span class="t t-cm">Scale AI (RLHF 标注)</span>
+        <span class="t t-cm">Labelbox</span>
+      </div>
+    </div>
+    <div class="sub-block sb-infra">
+      <div class="sb-head">Pre-Training</div>
+      <div class="tags">
+        <span class="t t-os">PyTorch + FSDP2 ★主导</span>
+        <span class="t t-os">JAX / XLA (Google, TPU)</span>
+        <span class="t t-os">DeepSpeed (Microsoft)</span>
+        <span class="t t-os">Megatron-LM / Core (NVIDIA)</span>
+        <span class="t t-os">NeMo (NVIDIA)</span>
+        <span class="t t-os">Colossal-AI</span>
+        <span class="t t-os">torchtitan (Meta)</span>
+        <span class="t t-os">Transformer Engine (FP8)</span>
+        <span class="t t-os">Kubeflow / Volcano (调度)</span>
+        <span class="t t-os">Ray (Anyscale)</span>
+        <span class="t t-os">SkyPilot (多云)</span>
+        <span class="t t-os">MLflow (实验追踪)</span>
+        <span class="t t-cm">W&B (实验追踪)</span>
+      </div>
+    </div>
+    <div class="sub-block sb-infra">
+      <div class="sb-head">Post-Training</div>
+      <div class="tags">
+        <span class="t t-os">LLaMA-Factory (80k★) ★</span>
+        <span class="t t-os">Unsloth (2-5x加速)</span>
+        <span class="t t-os">Axolotl</span>
+        <span class="t t-os">PEFT / LoRA (HF)</span>
+        <span class="t t-os">TRL (HF, SFT/DPO/GRPO)</span>
+        <span class="t t-ali">SWIFT (ms-swift, 400+模型)</span>
+        <span class="t t-os">torchtune (Meta)</span>
+        <span class="t t-os">OpenRLHF ★RLHF领先</span>
+        <span class="t t-os">VERL (ByteDance)</span>
+        <span class="t t-os">NeMo Aligner (NVIDIA)</span>
+        <span class="t t-os">GPTQ / AWQ / bitsandbytes</span>
+        <span class="t t-os">GGUF 量化</span>
+      </div>
+    </div>
+    <div class="sub-block sb-infra">
+      <div class="sb-head">Inference</div>
+      <div class="tags">
+        <span class="t t-os">vLLM (50k★) ★主导</span>
+        <span class="t t-os">SGLang ★快速追赶</span>
+        <span class="t t-os">TensorRT-LLM (NVIDIA)</span>
+        <span class="t t-os">llama.cpp (本地推理标准)</span>
+        <span class="t t-os">MLC-LLM (移动端)</span>
+        <span class="t t-os">TGI (HF)</span>
+        <span class="t t-os">FlashAttention-3</span>
+        <span class="t t-os">PagedAttention</span>
+        <span class="t t-os">LMCache (KV cache共享)</span>
+        <span class="t t-os">KServe (K8s)</span>
+        <span class="t t-os">Triton Server (NVIDIA)</span>
+        <span class="t t-os">AIBrix (ByteDance→vLLM)</span>
+        <span class="t t-os">llm-d (Red Hat/IBM, 解聚推理)</span>
+        <span class="t t-os">BentoML / LitServe</span>
+      </div>
+    </div>
+  </div>
+  <div class="principle-bar"><strong>开源原则：</strong>训练/推理框架开源是行业共识——社区贡献度决定话语权和影响力。数据工具和微调工具开源可降低门槛、扩大用户池。推理引擎是最高杠杆：确保自家模型推理体验最优。集群调度/弹性伸缩/混合部署等运营能力适合商业化。</div>
+</div>
+
+<div class="arr">▼ ▼ ▼ ▼ ▼</div>
+
+<!-- ========== HARDWARE / CHIP ========== -->
+<div class="layer">
+  <div class="layer-head lh-hw">
+    <h2>HARDWARE / CHIP + COMPILERS</h2>
+    <span class="badge" style="background:rgba(251,191,36,.15);color:#fbbf24">GPU + 自研芯片 + 互联 + 编译器</span>
+    <span class="layer-desc">Blackwell B300 新标杆 | 超算厂商全面自研芯片 | UALink/UEC 挑战 NVLink</span>
+  </div>
+  <div class="layer-body">
+    <div class="sub-block sb-hw">
+      <div class="sb-head">GPUs</div>
+      <div class="tags">
+        <span class="t t-cm">NVIDIA H100 / H200</span>
+        <span class="t t-cm">NVIDIA B200 / B300 (Blackwell)</span>
+        <span class="t t-cm">AMD MI300X / MI350</span>
+        <span class="t t-cm">Intel Gaudi 3</span>
+      </div>
+    </div>
+    <div class="sub-block sb-hw">
+      <div class="sb-head">Custom AI Chips</div>
+      <div class="tags">
+        <span class="t t-cm">TPU v6e / v7 Ironwood (Google)</span>
+        <span class="t t-ali">含光 800 + 新一代推理芯片 (阿里)</span>
+        <span class="t t-cm">Trainium2/3 (AWS)</span>
+        <span class="t t-cm">Maia 100/200 (Microsoft)</span>
+        <span class="t t-cm">Cerebras WSE-3</span>
+        <span class="t t-cm">Groq LPU</span>
+      </div>
+    </div>
+    <div class="sub-block sb-hw">
+      <div class="sb-head">Interconnects</div>
+      <div class="tags">
+        <span class="t t-cm">NVLink 5 / NVSwitch (NVIDIA)</span>
+        <span class="t t-cm">InfiniBand NDR (NVIDIA)</span>
+        <span class="t t-cm">Google ICI (TPU互联)</span>
+        <span class="t t-os">UALink 1.0 (开放规范) ★</span>
+        <span class="t t-os">Ultra Ethernet (UEC) ★</span>
+        <span class="t t-cm">AMD Infinity Fabric</span>
+      </div>
+    </div>
+    <div class="sub-block sb-hw">
+      <div class="sb-head">Compilers</div>
+      <div class="tags">
+        <span class="t t-os">Triton (OpenAI, MIT)</span>
+        <span class="t t-os">XLA (Google, Apache)</span>
+        <span class="t t-os">TorchInductor (Meta)</span>
+        <span class="t t-os">Apache TVM</span>
+        <span class="t t-os">MLIR (LLVM, 基础设施标准)</span>
+        <span class="t t-os">IREE (Google)</span>
+      </div>
+    </div>
+  </div>
+  <div class="principle-bar"><strong>开源原则：</strong>开放互联标准（UALink/UEC）防止供应商锁定——积极参与制定标准获取话语权。编译器后端开源确保主流 AI 框架兼容性——这是自研芯片被生态接受的关键。为自研芯片构建 Triton/MLIR 后端是必经之路。</div>
+</div>
+
+</div><!-- end layers -->
+
+<!-- ============ RIGHT: EVALUATION AXIS ============ -->
+<div class="eval-col">
+  <div style="text-align:center;font-size:10px;color:#5a6478;padding:4px;letter-spacing:1px">EVALUATION AXIS ▸</div>
+
+  <div class="eval-card">
+    <h3>General Benchmarks</h3>
+    <div class="tags">
+      <span class="t">Chatbot Arena (LMSYS) ★</span>
+      <span class="t">MMLU-Pro</span>
+      <span class="t">GPQA Diamond</span>
+      <span class="t">SimpleQA</span>
+      <span class="t">LiveBench</span>
+      <span class="t">ARC-AGI-3</span>
+      <span class="t">FrontierMath</span>
+    </div>
+  </div>
+  <div class="eval-card">
+    <h3>Code Benchmarks</h3>
+    <div class="tags">
+      <span class="t">SWE-bench ★★</span>
+      <span class="t">BigCodeBench</span>
+      <span class="t">LiveCodeBench</span>
+      <span class="t">Aider Polyglot</span>
+      <span class="t">HumanEval+</span>
+    </div>
+  </div>
+  <div class="eval-card">
+    <h3>Agent Benchmarks</h3>
+    <div class="tags">
+      <span class="t">AgentBench (THU)</span>
+      <span class="t">GAIA (Meta)</span>
+      <span class="t">WebArena (CMU)</span>
+      <span class="t">OSWorld</span>
+      <span class="t">tau-bench (Sierra)</span>
+      <span class="t">ToolBench</span>
+    </div>
+  </div>
+  <div class="eval-card">
+    <h3>Multimodal</h3>
+    <div class="tags">
+      <span class="t">MMMU / MMMU-Pro</span>
+      <span class="t">MathVista</span>
+      <span class="t" style="background:rgba(255,140,58,.12);color:#fbbf24;border-color:rgba(255,140,58,.25)">MMBench ★阿里系</span>
+      <span class="t">VBench 2.0</span>
+      <span class="t" style="background:rgba(255,140,58,.12);color:#fbbf24;border-color:rgba(255,140,58,.25)">OCRBench ★阿里系</span>
+    </div>
+  </div>
+  <div class="eval-card">
+    <h3>Safety / Alignment</h3>
+    <div class="tags">
+      <span class="t">HarmBench ★</span>
+      <span class="t">TrustLLM</span>
+      <span class="t">DecodingTrust</span>
+      <span class="t">HELM Safety</span>
+      <span class="t">SimpleSafetyTests</span>
+    </div>
+  </div>
+  <div class="eval-card">
+    <h3>Eval Frameworks</h3>
+    <div class="tags">
+      <span class="t">lm-eval-harness ★</span>
+      <span class="t" style="background:rgba(255,140,58,.12);color:#fbbf24;border-color:rgba(255,140,58,.25)">OpenCompass ★阿里系</span>
+      <span class="t" style="background:rgba(255,140,58,.12);color:#fbbf24;border-color:rgba(255,140,58,.25)">EvalScope (ModelScope)</span>
+      <span class="t">HELM (Stanford)</span>
+    </div>
+  </div>
+  <div class="eval-card" style="background:rgba(100,160,255,.03);border-color:rgba(100,160,255,.1)">
+    <h3 style="color:#93c5fd">Eval 开源原则</h3>
+    <div style="font-size:10px;color:#7a94b8;line-height:1.6">
+      <strong style="color:#93c5fd">谁定义评测，谁引导行业共识。</strong>评测框架和 Benchmark 必须开源才有公信力。<br>
+      <strong style="color:#93c5fd">Agent 评测</strong>赛道（AgentBench / GAIA 方向）尚无赢家，是标准制定的窗口期。<br>
+      多模态评测（MMBench / OCRBench）已有影响力，保持投入。
+    </div>
+  </div>
+</div>
+
+</div><!-- end main-grid -->
+
+<div style="margin-top:16px;padding:12px 20px;border-radius:8px;background:rgba(255,255,255,.015);border:1px dashed rgba(100,160,255,.15);text-align:center">
+  <div style="font-size:12px;color:#7a94b8;line-height:1.7">
+    <strong style="color:#93c5fd">开源核心逻辑：</strong>开源所有"标准层"（协议 / 框架 / 工具 / 评测） → 商业化所有"运营层"（托管服务 / 集群调度 / 安全合规 / 企业支持） → <strong>许可证选择 (Apache 2.0 / MIT) 决定信任度，社区贡献度决定话语权</strong>
+  </div>
+</div>
+
+<div class="footer">AI Technology Landscape Full-Stack Architecture Map — Open Source Strategy View — April 2026</div>
+
+</div>
+</body>
+</html>

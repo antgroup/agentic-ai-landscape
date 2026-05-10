@@ -116,6 +116,10 @@ def ensure_direct_network_hosts():
     """Bypass inherited SOCKS proxy settings for hosts used by this pipeline."""
     for host in DIRECT_NETWORK_HOSTS:
         ensure_no_proxy(host)
+    for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        value = os.getenv(key, "")
+        if "127.0.0.1" in value or "localhost" in value:
+            os.environ.pop(key, None)
 
 def get_ch_client():
     """Create the ClickHouse client lazily so importing this module has no network side effects."""

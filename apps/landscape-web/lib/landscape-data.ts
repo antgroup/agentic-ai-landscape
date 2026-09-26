@@ -231,6 +231,16 @@ const PROJECT_NAME_OVERRIDES: Record<string, string> = {
   "zeroclaw-labs/zeroclaw": "ZeroClaw",
 };
 
+function latestOpenrank(record: Record<string, string>) {
+  return nullableNumber(record.openrank_2608) ?? nullableNumber(record.openrank_2607);
+}
+
+function latestOpenrankTrend(record: Record<string, string>) {
+  return parseTrend(
+    record.openrank_trend_2509_2608 || record.openrank_trend_2508_2607,
+  );
+}
+
 function parseCsv(source: string) {
   const rows: string[][] = [];
   let row: string[] = [];
@@ -431,8 +441,8 @@ function readSelectedRecords() {
     .sort(
       (a, b) =>
         a.section.index - b.section.index ||
-        (nullableNumber(b.record.openrank_2607) ?? -1) -
-          (nullableNumber(a.record.openrank_2607) ?? -1) ||
+        (latestOpenrank(b.record) ?? -1) -
+          (latestOpenrank(a.record) ?? -1) ||
         a.record.repo_name.localeCompare(b.record.repo_name),
     );
 }
@@ -468,7 +478,7 @@ export function getLandscapeProjects(): LandscapeProject[] {
       forks: numberOrZero(record.forks),
       openIssues: numberOrZero(record.open_issues),
       license: record.license || "—",
-      openrank: nullableNumber(record.openrank_2607),
+      openrank: latestOpenrank(record),
       participants: nullableNumber(record.participants_2607),
       language: record.language || "—",
       createdAt: record.created_at,
@@ -483,7 +493,7 @@ export function getLandscapeProjects(): LandscapeProject[] {
       trendSignalReason: record.trend_signal_reason ?? "",
       topics: record.topics.split(",").filter(Boolean),
       categories: [record.landscape_layer, record.landscape_section],
-      trend: parseTrend(record.openrank_trend_2508_2607),
+      trend: latestOpenrankTrend(record),
       stage: section.stage,
       zone: section.zone,
     };

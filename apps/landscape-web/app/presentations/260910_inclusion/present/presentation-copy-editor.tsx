@@ -259,7 +259,7 @@ export function EditablePresentationText({
     );
   }
   const editor = editorContext;
-  const value = editor.copy[copyKey];
+  const value = editor.copy[copyKey] ?? "";
 
   function readText(element: HTMLElement) {
     return element.innerText.replaceAll("\u00a0", " ").trim();

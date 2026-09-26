@@ -6,6 +6,12 @@ import path from "node:path";
 export const PRESENTATION_COPY_KEYS = [
   "coverTitleLine1",
   "coverTitleLine2",
+  "coverSubtitle",
+  "evolutionTitle",
+  "evolutionBody",
+  "evolution2025Label",
+  "evolution2026Label",
+  "evolutionInclusionLabel",
   "coverSpeakerName",
   "coverSpeakerOrg",
   "coverEvent",
@@ -23,6 +29,32 @@ export const PRESENTATION_COPY_KEYS = [
   "modelTrendBody",
   "landscapeTrendTitle",
   "landscapeTrendBody",
+  "agentInsight1Angle",
+  "agentInsight1Metric",
+  "agentInsight1Title",
+  "agentInsight1Note",
+  "agentInsight2Angle",
+  "agentInsight2Metric",
+  "agentInsight2Title",
+  "agentInsight2Note",
+  "agentInsight3Angle",
+  "agentInsight3Metric",
+  "agentInsight3Title",
+  "agentInsight3Note",
+  "agentRankingLabel",
+  "modelInsight1Angle",
+  "modelInsight1Metric",
+  "modelInsight1Title",
+  "modelInsight1Note",
+  "modelInsight2Angle",
+  "modelInsight2Metric",
+  "modelInsight2Title",
+  "modelInsight2Note",
+  "modelInsight3Angle",
+  "modelInsight3Metric",
+  "modelInsight3Title",
+  "modelInsight3Note",
+  "modelRankingLabel",
   "languageTrendTitle",
   "languageTrendBody",
   "runtimeTrendTitle",
@@ -72,10 +104,50 @@ export const PRESENTATION_COPY_KEYS = [
   "closingPathReview",
   "closingPathMerge",
   "closingPathMaintain",
+  "closingWebsiteLabel",
+  "closingGithubLabel",
+  "closingHuggingFaceLabel",
+  "closingXLabel",
+  "closingTalkLabel",
+  "closingQrNote",
 ] as const;
 
 export type PresentationCopyKey = (typeof PRESENTATION_COPY_KEYS)[number];
-export type PresentationCopy = Record<PresentationCopyKey, string>;
+type OptionalPresentationCopyKey =
+  | "coverSubtitle"
+  | "evolutionTitle"
+  | "evolutionBody"
+  | "evolution2025Label"
+  | "evolution2026Label"
+  | "evolutionInclusionLabel"
+  | "closingWebsiteLabel"
+  | "closingGithubLabel"
+  | "closingHuggingFaceLabel"
+  | "closingXLabel"
+  | "closingTalkLabel"
+  | "closingQrNote";
+type RequiredPresentationCopyKey = Exclude<
+  PresentationCopyKey,
+  OptionalPresentationCopyKey
+>;
+
+const OPTIONAL_PRESENTATION_COPY_KEYS: readonly OptionalPresentationCopyKey[] = [
+  "coverSubtitle",
+  "evolutionTitle",
+  "evolutionBody",
+  "evolution2025Label",
+  "evolution2026Label",
+  "evolutionInclusionLabel",
+  "closingWebsiteLabel",
+  "closingGithubLabel",
+  "closingHuggingFaceLabel",
+  "closingXLabel",
+  "closingTalkLabel",
+  "closingQrNote",
+];
+
+export type PresentationCopy = Record<RequiredPresentationCopyKey, string> &
+  Partial<Record<OptionalPresentationCopyKey, string>>;
 
 const PRESENTATION_COPY_RELATIVE_PATH = path.join(
   "insights",
@@ -107,15 +179,24 @@ export function validatePresentationCopy(
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record);
 
+  const requiredKeys = PRESENTATION_COPY_KEYS.filter(
+    (key): key is RequiredPresentationCopyKey =>
+      !OPTIONAL_PRESENTATION_COPY_KEYS.includes(
+        key as OptionalPresentationCopyKey,
+      ),
+  );
+
   return (
-    keys.length === PRESENTATION_COPY_KEYS.length &&
-    PRESENTATION_COPY_KEYS.every(
+    requiredKeys.every(
       (key) =>
         typeof record[key] === "string" &&
         (record[key] as string).length <= 12_000,
     ) &&
-    keys.every((key) =>
-      PRESENTATION_COPY_KEYS.includes(key as PresentationCopyKey),
+    keys.every(
+      (key) =>
+        PRESENTATION_COPY_KEYS.includes(key as PresentationCopyKey) &&
+        typeof record[key] === "string" &&
+        (record[key] as string).length <= 12_000,
     )
   );
 }

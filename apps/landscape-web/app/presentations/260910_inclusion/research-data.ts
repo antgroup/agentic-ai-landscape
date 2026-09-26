@@ -31,6 +31,60 @@ export type RuntimePathPoint = {
   }>;
 };
 
+export type InfraTrendStats = {
+  layer: "agent" | "model";
+  projects: number;
+  stars: number;
+  contributors: number;
+  openrank: number;
+  openrankCoverage: number;
+  monthly: Array<{ month: string; label: string; value: number }>;
+  domains: Array<{
+    label: string;
+    projects: number;
+    stars: number;
+    contributors: number;
+    openrank: number;
+    openrankCoverage: number;
+    delta: number;
+  }>;
+  languages: Array<{
+    label: string;
+    projects: number;
+    stars: number;
+    contributors: number;
+    openrank: number;
+    projectShare: number;
+    starShare: number;
+    openrankShare: number;
+  }>;
+  scaleLeaders: Array<{
+    name: string;
+    repo: string;
+    zone: string;
+    openrank: number;
+    stars: number;
+    contributors: number;
+  }>;
+  momentumLeaders: Array<{
+    name: string;
+    repo: string;
+    zone: string;
+    delta: number;
+    openrank: number;
+    stars: number;
+    contributors: number;
+  }>;
+  miniMax: null | {
+    name: string;
+    repo: string;
+    stars: number;
+    contributors: number;
+    createdAt: string;
+    openrankIndexed: boolean;
+  };
+};
+
 export type InclusionResearchStats = {
   total: number;
   agent: number;
@@ -58,6 +112,10 @@ export type InclusionResearchStats = {
   }>;
   languageMix: LanguageMixGroup[];
   runtimePath: RuntimePathPoint[];
+  infraTrends: {
+    agent: InfraTrendStats;
+    model: InfraTrendStats;
+  };
   collaboration: CollaborationResearchStats;
 };
 
@@ -1349,6 +1407,192 @@ function languageMix(projects: LandscapeProject[]) {
   });
 }
 
+const OPENRANK_MONTHS = [
+  "2025-09",
+  "2025-10",
+  "2025-11",
+  "2025-12",
+  "2026-01",
+  "2026-02",
+  "2026-03",
+  "2026-04",
+  "2026-05",
+  "2026-06",
+  "2026-07",
+  "2026-08",
+] as const;
+
+function trendValue(project: LandscapeProject, index: number) {
+  const value = project.trend[index];
+  return typeof value === "number" ? value : null;
+}
+
+function sumTrend(projects: LandscapeProject[], index: number) {
+  return projects.reduce(
+    (sum, project) => sum + (trendValue(project, index) ?? 0),
+    0,
+  );
+}
+
+function infraTrendStats(
+  projects: LandscapeProject[],
+  layer: "agent" | "model",
+): InfraTrendStats {
+  const domainLabels = [...new Set(projects.map((project) => project.zone))];
+  const latestValues = projects
+    .map((project) => trendValue(project, 11))
+    .filter((value): value is number => value !== null);
+  const totalStars = projects.reduce((sum, project) => sum + project.stars, 0);
+  const totalContributors = projects.reduce(
+    (sum, project) => sum + (project.contributors ?? 0),
+    0,
+  );
+  const totalOpenrank = latestValues.reduce((sum, value) => sum + value, 0);
+  const languageGroups = new Map<string, LandscapeProject[]>();
+  projects.forEach((project) => {
+    const label = project.language === "—" ? "Other" : project.language;
+    const grouped = languageGroups.get(label) ?? [];
+    grouped.push(project);
+    languageGroups.set(label, grouped);
+  });
+  const leadingLanguages = [...languageGroups.entries()]
+    .map(([label, grouped]) => ({
+      label,
+      grouped,
+      openrank: sumTrend(grouped, 11),
+    }))
+    .sort(
+      (a, b) =>
+        b.openrank - a.openrank || b.grouped.length - a.grouped.length,
+    );
+  const displayedLanguages = leadingLanguages.slice(0, 4);
+  const otherProjects = leadingLanguages
+    .slice(4)
+    .flatMap((item) => item.grouped);
+  if (otherProjects.length) {
+    displayedLanguages.push({
+      label: "Other",
+      grouped: otherProjects,
+      openrank: sumTrend(otherProjects, 11),
+    });
+  }
+
+  const miniMaxProject = projects.find(
+    (project) => project.repo.toLowerCase() === "minimax-ai/minimax-code",
+  );
+
+  return {
+    layer,
+    projects: projects.length,
+    stars: totalStars,
+    contributors: totalContributors,
+    openrank: Math.round(totalOpenrank * 10) / 10,
+    openrankCoverage: latestValues.length,
+    monthly: OPENRANK_MONTHS.map((month, index) => ({
+      month,
+      label: month.slice(2).replace("-", "."),
+      value: Math.round(sumTrend(projects, index) * 10) / 10,
+    })),
+    domains: domainLabels.map((label) => {
+      const grouped = projects.filter(
+        (project) => project.zone === label,
+      );
+      return {
+        label,
+        projects: grouped.length,
+        stars: grouped.reduce((sum, project) => sum + project.stars, 0),
+        contributors: grouped.reduce(
+          (sum, project) => sum + (project.contributors ?? 0),
+          0,
+        ),
+        openrank: Math.round(sumTrend(grouped, 11) * 10) / 10,
+        openrankCoverage: grouped.filter(
+          (project) => trendValue(project, 11) !== null,
+        ).length,
+        delta:
+          Math.round((sumTrend(grouped, 11) - sumTrend(grouped, 10)) * 10) /
+          10,
+      };
+    }),
+    languages: displayedLanguages.map(({ label, grouped, openrank }) => {
+      const stars = grouped.reduce((sum, project) => sum + project.stars, 0);
+      const contributors = grouped.reduce(
+        (sum, project) => sum + (project.contributors ?? 0),
+        0,
+      );
+      return {
+        label,
+        projects: grouped.length,
+        stars,
+        contributors,
+        openrank: Math.round(openrank * 10) / 10,
+        projectShare: Math.round((grouped.length / projects.length) * 100),
+        starShare: Math.round((stars / totalStars) * 100),
+        openrankShare: Math.round((openrank / totalOpenrank) * 100),
+      };
+    }),
+    scaleLeaders: projects
+      .map((project) => ({ project, openrank: trendValue(project, 11) }))
+      .filter(
+        (item): item is { project: LandscapeProject; openrank: number } =>
+          item.openrank !== null,
+      )
+      .sort((a, b) => b.openrank - a.openrank)
+      .slice(0, 6)
+      .map(({ project, openrank }) => ({
+        name: project.name,
+        repo: project.repo,
+        zone: project.zone,
+        openrank,
+        stars: project.stars,
+        contributors: project.contributors ?? 0,
+      })),
+    momentumLeaders: projects
+      .map((project) => {
+        const july = trendValue(project, 10);
+        const august = trendValue(project, 11);
+        return {
+          project,
+          august,
+          delta:
+            july === null || august === null
+              ? null
+              : Math.round((august - july) * 100) / 100,
+        };
+      })
+      .filter(
+        (
+          item,
+        ): item is {
+          project: LandscapeProject;
+          august: number;
+          delta: number;
+        } => item.august !== null && item.delta !== null && item.delta > 0,
+      )
+      .sort((a, b) => b.delta - a.delta)
+      .slice(0, 6)
+      .map(({ project, august, delta }) => ({
+        name: project.name,
+        repo: project.repo,
+        zone: project.zone,
+        delta,
+        openrank: august,
+        stars: project.stars,
+        contributors: project.contributors ?? 0,
+      })),
+    miniMax: miniMaxProject
+      ? {
+          name: miniMaxProject.name,
+          repo: miniMaxProject.repo,
+          stars: miniMaxProject.stars,
+          contributors: miniMaxProject.contributors ?? 0,
+          createdAt: miniMaxProject.createdAt,
+          openrankIndexed: trendValue(miniMaxProject, 11) !== null,
+        }
+      : null,
+  };
+}
+
 const RUNTIME_PATH = [
   { label: "Memory, knowledge & context", shortLabel: "Context" },
   { label: "Protocols & interoperability", shortLabel: "Interface" },
@@ -1476,6 +1720,10 @@ export function getInclusionResearchData() {
       })),
     languageMix: languageMix(projects),
     runtimePath: runtimePath(agentProjects),
+    infraTrends: {
+      agent: infraTrendStats(agentProjects, "agent"),
+      model: infraTrendStats(modelProjects, "model"),
+    },
     collaboration: collaborationResearchStats(),
   };
 

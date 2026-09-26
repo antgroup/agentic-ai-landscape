@@ -7,7 +7,9 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ExternalLinkIcon,
+  Globe2Icon,
   Maximize2Icon,
+  PresentationIcon,
 } from "lucide-react";
 import {
   type CSSProperties,
@@ -15,6 +17,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -26,9 +29,10 @@ import type {
 } from "@/lib/inclusion-presentation-copy";
 import type { LandscapeProject } from "@/lib/landscape-types";
 
-import type { InclusionResearchStats } from "../research-data";
-import { LanguageMixChart } from "../report-figures";
-import reportStyles from "../page.module.css";
+import type {
+  InclusionResearchStats,
+  InfraTrendStats,
+} from "../research-data";
 import {
   EditablePresentationText,
   PresentationCopyEditor,
@@ -37,11 +41,11 @@ import styles from "./presentation.module.css";
 
 type SwipeStart = { pointerId: number; x: number; y: number };
 
-const scenes = [
+const presentationScenes = [
   { id: "cover", label: "开场", chapter: "开场", maxBuild: 0 },
-  { id: "agent-landscape", label: "Agent Infra", chapter: "Landscape", maxBuild: 2 },
-  { id: "model-landscape", label: "Model Infra", chapter: "Landscape", maxBuild: 1 },
-  { id: "trend-observation", label: "语言分布", chapter: "Landscape", maxBuild: 0 },
+  { id: "evolution", label: "生态图演进", chapter: "Landscape", maxBuild: 0 },
+  { id: "agent-landscape", label: "Agent Infra", chapter: "Landscape", maxBuild: 3 },
+  { id: "model-landscape", label: "Model Infra", chapter: "Landscape", maxBuild: 3 },
   { id: "repository", label: "进入仓库", chapter: "协作", maxBuild: 0 },
   { id: "flow", label: "工作流入", chapter: "协作", maxBuild: 0 },
   { id: "pressure", label: "处理压力", chapter: "协作", maxBuild: 0 },
@@ -52,16 +56,12 @@ const scenes = [
   { id: "close", label: "结尾", chapter: "结尾", maxBuild: 0 },
 ] as const;
 
-type SceneId = (typeof scenes)[number]["id"];
-type LandscapeView = "agent" | "model";
+const inclusionScenes = presentationScenes.filter(
+  (scene) => scene.id !== "evolution",
+);
 
-type LandscapeInsight = {
-  domain: string;
-  metric: string;
-  titleKey: PresentationCopyKey;
-  bodyKey: PresentationCopyKey;
-  focus?: string | string[];
-};
+type SceneId = (typeof presentationScenes)[number]["id"];
+type LandscapeView = "agent" | "model";
 
 type BarStyle = CSSProperties & {
   "--bar-delay"?: string;
@@ -134,6 +134,13 @@ export default function InclusionPresentation({
   const [build, setBuild] = useState(0);
   const [hashReady, setHashReady] = useState(false);
   const swipeStart = useRef<SwipeStart | null>(null);
+  const showEvolution = typeof initialCopy.evolutionTitle === "string";
+  const showClosingContacts =
+    typeof initialCopy.closingWebsiteLabel === "string";
+  const scenes = useMemo(
+    () => (showEvolution ? presentationScenes : inclusionScenes),
+    [showEvolution],
+  );
   const scene = scenes[sceneIndex];
 
   const next = useCallback(() => {
@@ -144,7 +151,7 @@ export default function InclusionPresentation({
     const nextIndex = Math.min(scenes.length - 1, sceneIndex + 1);
     setSceneIndex(nextIndex);
     setBuild(0);
-  }, [build, scene.maxBuild, sceneIndex]);
+  }, [build, scene.maxBuild, sceneIndex, scenes.length]);
 
   const previous = useCallback(() => {
     if (build > 0) {
@@ -154,13 +161,16 @@ export default function InclusionPresentation({
     const previousIndex = Math.max(0, sceneIndex - 1);
     setSceneIndex(previousIndex);
     setBuild(scenes[previousIndex].maxBuild);
-  }, [build, sceneIndex]);
+  }, [build, sceneIndex, scenes]);
 
-  const goToScene = useCallback((index: number, nextBuild = 0) => {
-    const safeIndex = Math.max(0, Math.min(scenes.length - 1, index));
-    setSceneIndex(safeIndex);
-    setBuild(Math.max(0, Math.min(scenes[safeIndex].maxBuild, nextBuild)));
-  }, []);
+  const goToScene = useCallback(
+    (index: number, nextBuild = 0) => {
+      const safeIndex = Math.max(0, Math.min(scenes.length - 1, index));
+      setSceneIndex(safeIndex);
+      setBuild(Math.max(0, Math.min(scenes[safeIndex].maxBuild, nextBuild)));
+    },
+    [scenes],
+  );
 
   const enterFullscreen = useCallback(async () => {
     if (!document.fullscreenElement) {
@@ -185,7 +195,7 @@ export default function InclusionPresentation({
       setHashReady(true);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [goToScene]);
+  }, [goToScene, scenes]);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -203,7 +213,7 @@ export default function InclusionPresentation({
 
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
-  }, [goToScene]);
+  }, [goToScene, scenes]);
 
   useEffect(() => {
     if (!hashReady) return;
@@ -228,7 +238,7 @@ export default function InclusionPresentation({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [enterFullscreen, goToScene, next, previous]);
+  }, [enterFullscreen, goToScene, next, previous, scenes.length]);
 
   function handlePointerDown(event: ReactPointerEvent<HTMLElement>) {
     if (event.pointerType !== "touch") return;
@@ -271,7 +281,14 @@ export default function InclusionPresentation({
             data-stage-scene={scene.id}
             key={scene.id === "lineage" ? scene.id : `${scene.id}.${build}`}
           >
-            <Scene build={build} id={scene.id} projects={projects} stats={stats} />
+            <Scene
+              build={build}
+              id={scene.id}
+              projects={projects}
+              showClosingContacts={showClosingContacts}
+              showCoverSubtitle={typeof initialCopy.coverSubtitle === "string"}
+              stats={stats}
+            />
           </div>
 
           <nav className={styles.deckNav} aria-label="演示导航">
@@ -316,15 +333,22 @@ export default function InclusionPresentation({
 function Scene({
   id,
   projects,
+  showClosingContacts,
+  showCoverSubtitle,
   stats,
   build,
 }: {
   id: SceneId;
   projects: LandscapeProject[];
+  showClosingContacts: boolean;
+  showCoverSubtitle: boolean;
   stats: InclusionResearchStats;
   build: number;
 }) {
-  if (id === "cover") return <CoverSlide />;
+  if (id === "cover") {
+    return <CoverSlide showSubtitle={showCoverSubtitle} />;
+  }
+  if (id === "evolution") return <EvolutionSlide />;
   if (id === "agent-landscape" || id === "model-landscape") {
     return (
       <LandscapeSlide
@@ -335,7 +359,6 @@ function Scene({
       />
     );
   }
-  if (id === "trend-observation") return <LanguageTrendSlide stats={stats} />;
   if (id === "repository") return <RepositorySlide stats={stats} />;
   if (id === "flow") return <FlowSlide stats={stats} />;
   if (id === "pressure") return <PressureSlide stats={stats} />;
@@ -343,10 +366,10 @@ function Scene({
   if (id === "public-work") return <PublicWorkSlide stats={stats} />;
   if (id === "review") return <ReviewSlide stats={stats} />;
   if (id === "lineage") return <LineageSlide build={build} />;
-  return <ClosingSlide />;
+  return <ClosingSlide showContacts={showClosingContacts} />;
 }
 
-function CoverSlide() {
+function CoverSlide({ showSubtitle }: { showSubtitle: boolean }) {
   return (
     <article className={styles.coverSlide}>
       <header className={styles.coverMasthead}>
@@ -361,6 +384,13 @@ function CoverSlide() {
           <EditablePresentationText copyKey="coverTitleLine1" />
           <EditablePresentationText as="strong" copyKey="coverTitleLine2" />
         </h1>
+        {showSubtitle ? (
+          <EditablePresentationText
+            as="p"
+            className={styles.coverSubtitle}
+            copyKey="coverSubtitle"
+          />
+        ) : null}
       </section>
       <footer className={styles.coverMeta}>
         <p>
@@ -371,6 +401,106 @@ function CoverSlide() {
           <EditablePresentationText as="strong" copyKey="coverEvent" />
           <EditablePresentationText as="time" copyKey="coverDate" />
         </p>
+      </footer>
+    </article>
+  );
+}
+
+function EvolutionSlide() {
+  return (
+    <article className={styles.evolutionSlide}>
+      <header className={styles.evolutionLead}>
+        <EditablePresentationText as="h2" copyKey="evolutionTitle" />
+        <EditablePresentationText as="p" copyKey="evolutionBody" />
+      </header>
+
+      <section
+        className={styles.evolutionComparison}
+        aria-label="开源生态结构与 InclusionAI 开放项目布局"
+      >
+        <div className={styles.evolutionHistory}>
+          <figure data-year="2025">
+            <figcaption>
+              <strong>2025</strong>
+              <EditablePresentationText
+                as="span"
+                copyKey="evolution2025Label"
+              />
+            </figcaption>
+            <div className={styles.evolutionImageFrame}>
+              <Image
+                alt="2025 年收集的开源 LLM 生态结构"
+                fill
+                sizes="27vw"
+                src="/presentations/260924-minimax-developer/ecosystem-2025.png"
+              />
+            </div>
+          </figure>
+
+          <figure data-year="2026">
+            <figcaption>
+              <strong>2026</strong>
+              <EditablePresentationText
+                as="span"
+                copyKey="evolution2026Label"
+              />
+            </figcaption>
+            <div className={styles.evolutionImageFrame}>
+              <Image
+                alt="2026 年拆分后的 Agent Infra、Model Infra 和 Model 三层结构"
+                fill
+                sizes="27vw"
+                src="/presentations/260924-minimax-developer/architecture-2026.jpg"
+              />
+            </div>
+          </figure>
+        </div>
+
+        <figure className={styles.evolutionInclusion}>
+          <figcaption>
+            <strong>InclusionAI</strong>
+            <EditablePresentationText
+              as="span"
+              copyKey="evolutionInclusionLabel"
+            />
+          </figcaption>
+          <div className={styles.evolutionImageFrame}>
+            <Image
+              alt="InclusionAI 从模型、模型基础设施、Agent 基础设施到 AI 服务的开放项目布局"
+              fill
+              priority
+              sizes="61vw"
+              src="/presentations/260924-minimax-developer/inclusionai-stack.jpg"
+            />
+          </div>
+        </figure>
+      </section>
+
+      <footer className={styles.evolutionSources}>
+        <a
+          aria-label="Agentic AI Landscape GitHub 地址"
+          href="https://github.com/antgroup/agentic-ai-landscape"
+          rel="noreferrer"
+          target="_blank"
+        >
+          <Image
+            alt=""
+            aria-hidden="true"
+            height={96}
+            src="/awesome/assets/github-avatars/github.png"
+            width={96}
+          />
+          <span>GitHub：github.com/antgroup/agentic-ai-landscape</span>
+        </a>
+        <a
+          aria-label="InclusionAI Insights 在线地址"
+          href="https://insights.inclusion-ai.org/"
+          rel="noreferrer"
+          target="_blank"
+        >
+          <Globe2Icon aria-hidden="true" />
+          <span>在线地址：insights.inclusion-ai.org</span>
+        </a>
       </footer>
     </article>
   );
@@ -445,93 +575,185 @@ function LandscapeSlide({
   view: LandscapeView;
   build: number;
 }) {
-  const activeInsight = getLandscapeInsight(view, stats, build);
+  const insights = getLandscapeInsights(view, stats.infraTrends[view], projects);
+  const activeInsight = insights[build - 1];
+
   return (
     <article className={styles.landscapeSlide}>
       <LandscapeExplorer
         embedOnly={view}
-        presentationFocus={build ? activeInsight.focus : undefined}
+        presentationFocus={activeInsight?.focus}
         presentationMode
+        presentationProjectFocus={activeInsight?.projectFocus}
         projects={projects}
       />
-      <aside className={styles.landscapeCallout} data-view={view} data-active={build > 0}>
-        <span>{activeInsight.domain}</span>
-        <strong>{activeInsight.metric}</strong>
-        <EditablePresentationText as="h2" copyKey={activeInsight.titleKey} />
-        <EditablePresentationText as="p" copyKey={activeInsight.bodyKey} />
-      </aside>
+      {activeInsight ? (
+        <LandscapeFinding
+          index={build}
+          insight={activeInsight}
+          total={insights.length}
+          view={view}
+        />
+      ) : null}
     </article>
   );
 }
 
-function getLandscapeInsight(
+type LandscapeFindingData = {
+  angleKey: PresentationCopyKey;
+  metricKey: PresentationCopyKey;
+  titleKey: PresentationCopyKey;
+  noteKey: PresentationCopyKey;
+  rankingLabelKey?: PresentationCopyKey;
+  ranking?: InfraTrendStats["scaleLeaders"];
+  focus?: string[];
+  projectFocus?: string[];
+};
+
+function getLandscapeInsights(
   view: LandscapeView,
-  stats: InclusionResearchStats,
-  build: number,
-): LandscapeInsight {
-  const application = stats.agentMacro.find((item) => item.label === "Application");
-  const runtimeProjectCount = stats.runtimePath.reduce(
-    (sum, point) => sum + point.projects,
-    0,
-  );
-  const serving = stats.modelMacro.find((item) => item.label === "Serving");
+  trend: InfraTrendStats,
+  projects: LandscapeProject[],
+): LandscapeFindingData[] {
+  const ranking = trend.scaleLeaders.slice(0, 5);
 
   if (view === "agent") {
-    if (build >= 2) {
-      return {
-        domain: "Runtime",
-        metric: `${runtimeProjectCount}`,
-        titleKey: "runtimeTrendTitle",
-        bodyKey: "runtimeTrendBody",
-        focus: stats.runtimePath.map((point) => point.label),
-      };
-    }
-
-    return {
-      domain: "Application",
-      metric: `${application?.openrankShare ?? 0}%`,
-      titleKey: "agentTrendTitle",
-      bodyKey: "agentTrendBody",
-      focus: [
-        "Agentic coding",
-        "Coding workflows & harnesses",
-        "Personal AI assistants",
-        "Chatbot workspaces",
-      ],
-    };
+    return [
+      {
+        angleKey: "agentInsight1Angle",
+        metricKey: "agentInsight1Metric",
+        titleKey: "agentInsight1Title",
+        noteKey: "agentInsight1Note",
+        rankingLabelKey: "agentRankingLabel",
+        ranking,
+        projectFocus: ranking.map((project) => project.repo),
+      },
+      {
+        angleKey: "agentInsight2Angle",
+        metricKey: "agentInsight2Metric",
+        titleKey: "agentInsight2Title",
+        noteKey: "agentInsight2Note",
+        focus: [
+          "Agentic coding",
+          "Coding workflows & harnesses",
+          "Personal AI assistants",
+          "Chatbot workspaces",
+        ],
+      },
+      {
+        angleKey: "agentInsight3Angle",
+        metricKey: "agentInsight3Metric",
+        titleKey: "agentInsight3Title",
+        noteKey: "agentInsight3Note",
+        focus: [
+          "Memory, knowledge & context",
+          "Protocols & interoperability",
+          "Tools, web & computer use",
+          "Observability & evaluation",
+          "Development sandboxes",
+        ],
+      },
+    ];
   }
 
-  return {
-    domain: "Serving",
-    metric: `${serving?.openrankShare ?? 0}%`,
-    titleKey: "modelTrendTitle",
-    bodyKey: "modelTrendBody",
-    focus: [
-      "Model API gateways",
-      "Serving · Deploy",
-      "Serving · Inference",
-    ],
-  };
+  const servingLabels = [
+    "Model API gateways",
+    "Serving · Deploy",
+    "Serving · Inference",
+  ];
+  const pythonProjects = projects
+    .filter(
+      (project) => project.stage === "model" && project.language === "Python",
+    )
+    .map((project) => project.repo);
+
+  return [
+    {
+      angleKey: "modelInsight1Angle",
+      metricKey: "modelInsight1Metric",
+      titleKey: "modelInsight1Title",
+      noteKey: "modelInsight1Note",
+      rankingLabelKey: "modelRankingLabel",
+      ranking,
+      projectFocus: ranking.map((project) => project.repo),
+    },
+    {
+      angleKey: "modelInsight2Angle",
+      metricKey: "modelInsight2Metric",
+      titleKey: "modelInsight2Title",
+      noteKey: "modelInsight2Note",
+      focus: servingLabels,
+    },
+    {
+      angleKey: "modelInsight3Angle",
+      metricKey: "modelInsight3Metric",
+      titleKey: "modelInsight3Title",
+      noteKey: "modelInsight3Note",
+      projectFocus: pythonProjects,
+    },
+  ];
 }
 
-function LanguageTrendSlide({ stats }: { stats: InclusionResearchStats }) {
+function LandscapeFinding({
+  index,
+  insight,
+  total,
+  view,
+}: {
+  index: number;
+  insight: LandscapeFindingData;
+  total: number;
+  view: LandscapeView;
+}) {
   return (
-    <article className={styles.reportFigureSlide} data-report-figure="language">
-      <section
-        className={`${reportStyles.languageSignal} ${styles.reportFigureBlock}`}
-        data-slide-figure="language"
+    <aside
+      aria-live="polite"
+      className={styles.landscapeFinding}
+      data-view={view}
+    >
+      <div className={styles.findingIndex}>
+        <EditablePresentationText as="span" copyKey={insight.angleKey} />
+        <strong>
+          {String(index).padStart(2, "0")} / {String(total).padStart(2, "0")}
+        </strong>
+        <div aria-hidden="true">
+          {Array.from({ length: total }, (_, itemIndex) => (
+            <i data-active={itemIndex + 1 === index} key={itemIndex} />
+          ))}
+        </div>
+      </div>
+      <EditablePresentationText
+        as="strong"
+        className={styles.findingMetric}
+        copyKey={insight.metricKey}
+      />
+      <div
+        className={styles.findingCopy}
+        data-has-ranking={Boolean(insight.ranking)}
       >
-        <header>
-          <EditablePresentationText as="h3" copyKey="languageTrendTitle" />
-          <EditablePresentationText as="p" copyKey="languageTrendBody" />
-        </header>
-        <LanguageMixChart
-          agentTotal={stats.agent}
-          groups={stats.languageMix}
-          modelTotal={stats.model}
-        />
-      </section>
-    </article>
+        <div className={styles.findingNarrative}>
+          <EditablePresentationText as="h2" copyKey={insight.titleKey} />
+          <EditablePresentationText as="p" copyKey={insight.noteKey} />
+        </div>
+        {insight.ranking && insight.rankingLabelKey ? (
+          <div className={styles.findingRanking}>
+            <EditablePresentationText
+              as="span"
+              copyKey={insight.rankingLabelKey}
+            />
+            <ol>
+              {insight.ranking.map((project, rankIndex) => (
+                <li key={project.repo}>
+                  <b>{rankIndex + 1}</b>
+                  <span>{project.name}</span>
+                  <strong>{formatOpenrank(project.openrank)}</strong>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : null}
+      </div>
+    </aside>
   );
 }
 
@@ -932,31 +1154,145 @@ function LineageSlide({ build }: { build: number }) {
   );
 }
 
-function ClosingSlide() {
+function ClosingStatement() {
   return (
-    <article className={styles.closingSlide}>
+    <section>
+      <EditablePresentationText as="p" copyKey="closingKicker" />
+      <h2>
+        <EditablePresentationText copyKey="closingTitleLine1" />
+        <br />
+        <EditablePresentationText copyKey="closingTitleLine2" />
+      </h2>
+      <EditablePresentationText
+        as="p"
+        className={styles.closingText}
+        copyKey="closingBody"
+      />
+    </section>
+  );
+}
+
+function ClosingSlide({ showContacts }: { showContacts: boolean }) {
+  return (
+    <article className={styles.closingSlide} data-contacts={showContacts}>
       <LogoPair />
-      <section>
-        <EditablePresentationText as="p" copyKey="closingKicker" />
-        <h2>
-          <EditablePresentationText copyKey="closingTitleLine1" />
-          <br />
-          <EditablePresentationText copyKey="closingTitleLine2" />
-        </h2>
-        <EditablePresentationText as="p" className={styles.closingText} copyKey="closingBody" />
-      </section>
-      <div className={styles.closingPath}>
-        <EditablePresentationText copyKey="closingPathCode" />
-        <EditablePresentationText copyKey="closingPathResponse" />
-        <EditablePresentationText copyKey="closingPathReview" />
-        <EditablePresentationText copyKey="closingPathMerge" />
-        <EditablePresentationText as="strong" copyKey="closingPathMaintain" />
-      </div>
-      <Link className={styles.closingLink} href="/presentations/260910_inclusion">
-        <EditablePresentationText copyKey="closingLink" />
-        <ExternalLinkIcon aria-hidden="true" />
-      </Link>
+      {showContacts ? (
+        <div className={styles.closingContactLayout}>
+          <div className={styles.closingContactCopy}>
+            <ClosingStatement />
+            <nav
+              className={styles.closingContactLinks}
+              aria-label="InclusionAI 官方入口"
+            >
+              <a
+                aria-label="InclusionAI 官网"
+                href="https://www.inclusion-ai.org/"
+                rel="noreferrer"
+                target="_blank"
+              >
+                <Globe2Icon aria-hidden="true" />
+                <EditablePresentationText copyKey="closingWebsiteLabel" />
+              </a>
+              <a
+                aria-label="InclusionAI GitHub"
+                href="https://github.com/inclusionAI"
+                rel="noreferrer"
+                target="_blank"
+              >
+                <Image
+                  alt=""
+                  aria-hidden="true"
+                  height={96}
+                  src="/awesome/assets/github-avatars/github.png"
+                  width={96}
+                />
+                <EditablePresentationText copyKey="closingGithubLabel" />
+              </a>
+              <a
+                aria-label="InclusionAI Hugging Face"
+                href="https://huggingface.co/inclusionAI"
+                rel="noreferrer"
+                target="_blank"
+              >
+                <Image
+                  alt=""
+                  aria-hidden="true"
+                  height={160}
+                  src="/project-logos/huggingface.png"
+                  width={160}
+                />
+                <EditablePresentationText copyKey="closingHuggingFaceLabel" />
+              </a>
+              <a
+                aria-label="InclusionAI X"
+                href="https://x.com/TheInclusionAI"
+                rel="noreferrer"
+                target="_blank"
+              >
+                <XSocialIcon />
+                <EditablePresentationText copyKey="closingXLabel" />
+              </a>
+              <a
+                aria-label="本次演讲线上地址"
+                className={styles.closingTalkLink}
+                href="https://insights.inclusion-ai.org/presentations/260924_MiniMaxDeveloper#cover.0"
+                rel="noreferrer"
+                target="_blank"
+              >
+                <PresentationIcon aria-hidden="true" />
+                <EditablePresentationText copyKey="closingTalkLabel" />
+              </a>
+            </nav>
+          </div>
+
+          <aside className={styles.closingQr}>
+            <div className={styles.closingQrCrop}>
+              <Image
+                alt="蚂蚁开源公众号二维码"
+                className={styles.closingQrSource}
+                height={774}
+                src="/presentations/260924-minimax-developer/closing-links-reference.png"
+                width={1728}
+              />
+            </div>
+            <EditablePresentationText as="p" copyKey="closingQrNote" />
+          </aside>
+        </div>
+      ) : (
+        <>
+          <ClosingStatement />
+          <div className={styles.closingPath}>
+            <EditablePresentationText copyKey="closingPathCode" />
+            <EditablePresentationText copyKey="closingPathResponse" />
+            <EditablePresentationText copyKey="closingPathReview" />
+            <EditablePresentationText copyKey="closingPathMerge" />
+            <EditablePresentationText
+              as="strong"
+              copyKey="closingPathMaintain"
+            />
+          </div>
+          <Link
+            className={styles.closingLink}
+            href="/presentations/260910_inclusion"
+          >
+            <EditablePresentationText copyKey="closingLink" />
+            <ExternalLinkIcon aria-hidden="true" />
+          </Link>
+        </>
+      )}
     </article>
+  );
+}
+
+function XSocialIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className={styles.xSocialIcon}
+      viewBox="0 0 24 24"
+    >
+      <path d="M18.244 2.25h3.308l-7.227 8.26L22.827 21.75h-6.657l-5.214-6.817-5.967 6.817H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" />
+    </svg>
   );
 }
 
@@ -975,6 +1311,10 @@ function formatCompact(value: number) {
   if (absolute >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (absolute >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
   return value.toLocaleString("en-US");
+}
+
+function formatOpenrank(value: number) {
+  return value.toFixed(1);
 }
 
 function formatSignedCompact(value: number) {

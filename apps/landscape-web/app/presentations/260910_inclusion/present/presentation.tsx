@@ -122,11 +122,13 @@ function isPresentationShortcutTarget(eventTarget: EventTarget | null) {
 export default function InclusionPresentation({
   copyEndpoint = "/api/inclusion-presentation-copy",
   initialCopy,
+  inlineLandscapeRankings = false,
   projects,
   stats,
 }: {
   copyEndpoint?: string;
   initialCopy: PresentationCopy;
+  inlineLandscapeRankings?: boolean;
   projects: LandscapeProject[];
   stats: InclusionResearchStats;
 }) {
@@ -137,10 +139,16 @@ export default function InclusionPresentation({
   const showEvolution = typeof initialCopy.evolutionTitle === "string";
   const showClosingContacts =
     typeof initialCopy.closingWebsiteLabel === "string";
-  const scenes = useMemo(
-    () => (showEvolution ? presentationScenes : inclusionScenes),
-    [showEvolution],
-  );
+  const scenes = useMemo(() => {
+    const baseScenes = showEvolution ? presentationScenes : inclusionScenes;
+    if (!inlineLandscapeRankings) return baseScenes;
+
+    return baseScenes.map((item) =>
+      item.id === "agent-landscape" || item.id === "model-landscape"
+        ? { ...item, maxBuild: 2 }
+        : item,
+    );
+  }, [inlineLandscapeRankings, showEvolution]);
   const scene = scenes[sceneIndex];
 
   const next = useCallback(() => {
@@ -284,6 +292,7 @@ export default function InclusionPresentation({
             <Scene
               build={build}
               id={scene.id}
+              inlineLandscapeRankings={inlineLandscapeRankings}
               projects={projects}
               showClosingContacts={showClosingContacts}
               showCoverSubtitle={typeof initialCopy.coverSubtitle === "string"}
@@ -332,6 +341,7 @@ export default function InclusionPresentation({
 
 function Scene({
   id,
+  inlineLandscapeRankings,
   projects,
   showClosingContacts,
   showCoverSubtitle,
@@ -339,6 +349,7 @@ function Scene({
   build,
 }: {
   id: SceneId;
+  inlineLandscapeRankings: boolean;
   projects: LandscapeProject[];
   showClosingContacts: boolean;
   showCoverSubtitle: boolean;
@@ -353,6 +364,7 @@ function Scene({
     return (
       <LandscapeSlide
         build={build}
+        inlineRankings={inlineLandscapeRankings}
         projects={projects}
         stats={stats}
         view={id === "agent-landscape" ? "agent" : "model"}
@@ -565,18 +577,27 @@ function RepositorySlide({ stats }: { stats: InclusionResearchStats }) {
 }
 
 function LandscapeSlide({
+  inlineRankings,
   projects,
   stats,
   view,
   build,
 }: {
+  inlineRankings: boolean;
   projects: LandscapeProject[];
   stats: InclusionResearchStats;
   view: LandscapeView;
   build: number;
 }) {
-  const insights = getLandscapeInsights(view, stats.infraTrends[view], projects);
+  const trend = stats.infraTrends[view];
+  const insights = getLandscapeInsights(
+    view,
+    trend,
+    projects,
+    inlineRankings,
+  );
   const activeInsight = insights[build - 1];
+  const ranking = trend.scaleLeaders.slice(0, 5);
 
   return (
     <article className={styles.landscapeSlide}>
@@ -587,6 +608,15 @@ function LandscapeSlide({
         presentationProjectFocus={activeInsight?.projectFocus}
         projects={projects}
       />
+      {activeInsight && inlineRankings ? (
+        <LandscapeTopFive
+          ranking={ranking}
+          rankingLabelKey={
+            view === "agent" ? "agentRankingLabel" : "modelRankingLabel"
+          }
+          view={view}
+        />
+      ) : null}
       {activeInsight ? (
         <LandscapeFinding
           index={build}
@@ -614,11 +644,12 @@ function getLandscapeInsights(
   view: LandscapeView,
   trend: InfraTrendStats,
   projects: LandscapeProject[],
+  inlineRankings: boolean,
 ): LandscapeFindingData[] {
   const ranking = trend.scaleLeaders.slice(0, 5);
 
   if (view === "agent") {
-    return [
+    const insights: LandscapeFindingData[] = [
       {
         angleKey: "agentInsight1Angle",
         metricKey: "agentInsight1Metric",
@@ -654,6 +685,7 @@ function getLandscapeInsights(
         ],
       },
     ];
+    return inlineRankings ? insights.slice(1) : insights;
   }
 
   const servingLabels = [
@@ -667,7 +699,7 @@ function getLandscapeInsights(
     )
     .map((project) => project.repo);
 
-  return [
+  const insights: LandscapeFindingData[] = [
     {
       angleKey: "modelInsight1Angle",
       metricKey: "modelInsight1Metric",
@@ -692,6 +724,35 @@ function getLandscapeInsights(
       projectFocus: pythonProjects,
     },
   ];
+  return inlineRankings ? insights.slice(1) : insights;
+}
+
+function LandscapeTopFive({
+  ranking,
+  rankingLabelKey,
+  view,
+}: {
+  ranking: InfraTrendStats["scaleLeaders"];
+  rankingLabelKey: PresentationCopyKey;
+  view: LandscapeView;
+}) {
+  return (
+    <aside className={styles.landscapeTopFive} data-view={view}>
+      <div className={styles.landscapeTopFiveLabel}>
+        <strong>TOP 5</strong>
+        <EditablePresentationText as="span" copyKey={rankingLabelKey} />
+      </div>
+      <ol>
+        {ranking.map((project, rankIndex) => (
+          <li key={project.repo}>
+            <b>{String(rankIndex + 1).padStart(2, "0")}</b>
+            <span>{project.name}</span>
+            <strong>{formatOpenrank(project.openrank)}</strong>
+          </li>
+        ))}
+      </ol>
+    </aside>
+  );
 }
 
 function LandscapeFinding({

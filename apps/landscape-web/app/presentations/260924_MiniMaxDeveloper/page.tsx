@@ -19,6 +19,7 @@ export default function MiniMaxDeveloperPresentationPage() {
     <InclusionPresentation
       copyEndpoint="/api/minimax-developer-presentation-copy"
       initialCopy={initialCopy}
+      inlineLandscapeRankings
       projects={projects}
       stats={stats}
     />

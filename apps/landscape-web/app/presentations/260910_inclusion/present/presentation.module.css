@@ -590,6 +590,140 @@
   height: 100%;
 }
 
+.landscapeTopFive {
+  position: absolute;
+  top: 66px;
+  right: 290px;
+  left: max(790px, 41vw);
+  z-index: 29;
+  min-height: 68px;
+  box-sizing: border-box;
+  padding: 7px;
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  background: #fff4fb;
+  border: 2px solid #d947a6;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgb(217 71 166 / 16%);
+  animation: landscape-finding-in 260ms cubic-bezier(.22, 1, .36, 1) both;
+  backdrop-filter: blur(14px);
+}
+
+.landscapeTopFive[data-view="model"] {
+  background: #f1f8ff;
+  border-color: #3a91db;
+  box-shadow: 0 6px 18px rgb(58 145 219 / 16%);
+}
+
+.landscapeTopFiveLabel {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.landscapeTopFiveLabel > strong {
+  width: max-content;
+  padding: 3px 7px;
+  color: #fff;
+  background: #d947a6;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: .08em;
+  line-height: 1;
+}
+
+.landscapeTopFive[data-view="model"] .landscapeTopFiveLabel > strong {
+  background: #3a91db;
+}
+
+.landscapeTopFiveLabel > span {
+  color: #4d4850;
+  font-size: 9px;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.landscapeTopFive ol {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  list-style: none;
+}
+
+.landscapeTopFive li {
+  min-width: 0;
+  min-height: 50px;
+  box-sizing: border-box;
+  padding: 7px 8px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 7px;
+  row-gap: 2px;
+  background: rgb(255 255 255 / 82%);
+  border-left: 1px solid #edc8df;
+  font-size: 12px;
+  line-height: 1.05;
+}
+
+.landscapeTopFive li:first-child {
+  border-radius: 7px 0 0 7px;
+}
+
+.landscapeTopFive li:last-child {
+  border-radius: 0 7px 7px 0;
+}
+
+.landscapeTopFive[data-view="model"] li {
+  border-left-color: #c7dff2;
+}
+
+.landscapeTopFive li b {
+  grid-row: 1 / 3;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: #9f226f;
+  background: #f6d4e9;
+  border-radius: 999px;
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.landscapeTopFive[data-view="model"] li b {
+  color: #1769aa;
+  background: #d5e9f8;
+}
+
+.landscapeTopFive li span {
+  grid-column: 2;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 880;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.landscapeTopFive li strong {
+  grid-column: 2;
+  color: #d947a6;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+}
+
+.landscapeTopFive[data-view="model"] li strong {
+  color: #3a91db;
+}
+
 .landscapeFinding {
   position: absolute;
   right: 54px;
